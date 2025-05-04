@@ -17,19 +17,14 @@
   <form id="entryForm">
     <label for="building">Bâtiment :</label>
     <input id="building" required><br>
-
     <label for="location">Localisation :</label>
     <input id="location" required><br>
-
     <label for="title">Intitulé :</label>
     <input id="title" required><br>
-
     <label for="quantity">Nombre :</label>
     <input id="quantity" type="number" min="1" value="1" required><br>
-
     <label for="agent">Agent (initiales) :</label>
     <input id="agent" maxlength="5" placeholder="ex: JD" required><br>
-
     <button type="button" id="addBtn">Ajouter</button>
     <button type="button" id="backupBtn">Sauvegarde JSON</button>
     <button type="button" id="excelBtn">Export Excel</button>
@@ -39,51 +34,38 @@
   <table id="dataTable">
     <thead>
       <tr>
-        <th>Bâtiment</th>
-        <th>Localisation</th>
-        <th>Intitulé</th>
-        <th>Nombre</th>
-        <th>Agent</th>
+        <th>Bâtiment</th><th>Localisation</th><th>Intitulé</th><th>Nombre</th><th>Agent</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
-  <!-- Module Firebase + jsPDF + AutoTable -->
+  <!-- Charger jsPDF UMD et plugin AutoTable -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Script principal en module pour Firebase et logique -->
   <script type="module">
-    // Import the functions you need from the SDKs you need
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
-      getFirestore,
-      collection,
-      addDoc,
-      getDocs,
-      query,
-      orderBy,
-      serverTimestamp
+      getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-    import jsPDF from "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    import "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js";
 
-    // TODO: Add SDKs for Firebase products that you want to use
-    // https://firebase.google.com/docs/web/setup#available-libraries
-
-    // Your web app's Firebase configuration
+    // Configuration Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
       authDomain: "inventairetechnique.firebaseapp.com",
       projectId: "inventairetechnique",
-      storageBucket: "inventairetechnique.firebasestorage.app",
+      storageBucket: "inventairetechnique.appspot.com",
       messagingSenderId: "783866462106",
       appId: "1:783866462106:web:7bc5eca39df86773efc423"
     };
 
-    // Initialize Firebase
+    // Init
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // Sélection des éléments
-    const form = document.getElementById('entryForm');
+    // DOM
     const addBtn = document.getElementById('addBtn');
     const backupBtn = document.getElementById('backupBtn');
     const excelBtn = document.getElementById('excelBtn');
@@ -95,60 +77,50 @@
     excelBtn.addEventListener('click', exportToExcel);
     pdfBtn.addEventListener('click', exportToPDF);
 
-    // 1. Ajouter une entrée
     async function addEntry() {
       const building = document.getElementById('building').value.trim();
       const location = document.getElementById('location').value.trim();
-      const title    = document.getElementById('title').value.trim();
+      const title = document.getElementById('title').value.trim();
       const quantity = Number(document.getElementById('quantity').value);
-      const agent    = document.getElementById('agent').value.trim();
-
+      const agent = document.getElementById('agent').value.trim();
       if (!building || !location || !title || quantity < 1 || !agent) {
         return alert('Tous les champs sont requis');
       }
-      await addDoc(collection(db, 'inventaire'), {
-        building,
-        location,
-        title,
-        quantity,
-        agent,
-        timestamp: serverTimestamp()
-      });
-      form.reset(); renderTable();
+      try {
+        await addDoc(collection(db, 'inventaire'), { building, location, title, quantity, agent, timestamp: serverTimestamp() });
+        form.reset(); renderTable();
+      } catch(e) {
+        console.error('Erreur addEntry:', e);
+        alert('Erreur lors de l'ajout : ' + e.message);
+      }
     }
 
-    // 2. Afficher la table
     async function renderTable() {
       tbody.innerHTML = '';
-      const q = query(collection(db, 'inventaire'), orderBy('timestamp', 'desc'));
-      const snapshot = await getDocs(q);
-      snapshot.forEach(doc => {
-        const d = doc.data();
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${d.building}</td>
-          <td>${d.location}</td>
-          <td>${d.title}</td>
-          <td>${d.quantity}</td>
-          <td>${d.agent}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+      try {
+        const q = query(collection(db, 'inventaire'), orderBy('timestamp', 'desc'));
+        const snapshot = await getDocs(q);
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${d.building}</td><td>${d.location}</td><td>${d.title}</td><td>${d.quantity}</td><td>${d.agent}</td>`;
+          tbody.appendChild(tr);
+        });
+      } catch(e) {
+        console.error('Erreur renderTable:', e);
+      }
     }
 
-    // 3. Sauvegarde JSON
     async function backupJSON() {
       const arr = [];
       const snapshot = await getDocs(collection(db, 'inventaire'));
       snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
       const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
       a.download = `inventaire_backup_${new Date().toISOString()}.json`;
       a.click();
     }
 
-    // 4. Export CSV (Excel)
     async function exportToExcel() {
       let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent\n';
       const snapshot = await getDocs(collection(db, 'inventaire'));
@@ -157,33 +129,31 @@
         csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent}\n`;
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'inventaire.csv';
-      a.click();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'inventaire.csv'; a.click();
     }
 
-    // 5. Export PDF
-    async function exportToPDF() {
+    function exportToPDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
-      doc.setFontSize(14);
-      doc.text('Inventaire Technique', 10, 10);
+      doc.setFontSize(14); doc.text('Inventaire Technique', 10, 10);
       const rows = [];
-      const snapshot = await getDocs(collection(db, 'inventaire'));
-      snapshot.forEach(doc => {
-        const d = doc.data();
-        rows.push([d.building, d.location, d.title, d.quantity.toString(), d.agent]);
+      // on utilise getDocs pour récupérer
+      getDocs(collection(db, 'inventaire')).then(snapshot => {
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          rows.push([d.building, d.location, d.title, d.quantity.toString(), d.agent]);
+        });
+        doc.autoTable({ startY: 20,
+          head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent']],
+          body: rows,
+          styles: { fontSize: 10 }
+        });
+        doc.save('inventaire.pdf');
       });
-      doc.autoTable({ startY: 20,
-        head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent']],
-        body: rows,
-        styles: { fontSize: 10 }
-      });
-      doc.save('inventaire.pdf');
     }
 
-    // Initial render
+    // initialisation
     renderTable();
   </script>
 </body>
