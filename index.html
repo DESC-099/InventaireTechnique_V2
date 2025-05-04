@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventaire Technique</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input, select, button { margin: 5px; padding: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    img { max-height: 100px; }
+    .loading { opacity: 0.6; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<h2>Inventaire Technique par Bâtiment</h2>
+
+<form id="entryForm">
+  <label for="building">Bâtiment :</label>
+  <input id="building" required />
+
+  <label for="location">Localisation :</label>
+  <input id="location" required />
+
+  <label for="equipment">Équipement :</label>
+  <input id="equipment" required />
+
+  <label for="quantity">Nombre :</label>
+  <input type="number" id="quantity" min="1" value="1" required />
+
+  <label for="userEmail">Votre email :</label>
+  <input id="userEmail" type="email" readonly />
+
+  <label for="photo">Photo :</label>
+  <input type="file" id="photo" accept="image/*" capture="environment" />
+
+  <br />
+  <button type="button" id="addBtn">Ajouter</button>
+  <button type="button" id="excelBtn">Export Excel</button>
+  <button type="button" id="pdfBtn">Export PDF</button>
+</form>
+
+<table id="dataTable">
+  <thead>
+    <tr>
+      <th>Bâtiment</th>
+      <th>Localisation</th>
+      <th>Équipement</th>
+      <th>Nombre</th>
+      <th>Email</th>
+      <th>Photo</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<!-- SDK Firebase (compat) + jsPDF + AutoTable -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+  // Configuration Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
+    authDomain: "inventairetechnique.firebaseapp.com",
+    projectId: "inventairetechnique",
+    storageBucket: "inventairetechnique.appspot.com",
+    messagingSenderId: "783866462106",
+    appId: "1:783866462106:web:b4dd1fbac248b113efc423"
+  };
+
+  // Initialisation
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const storage = firebase.storage();
+
+  let currentUser = null;
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      currentUser = user;
+    } else {
+      // Pour tests locaux sans page login
+      currentUser = { email: 'test@example.com' };
+    }
+    document.getElementById('userEmail').value = currentUser.email;
+    renderTable();
+  });
+
+  document.getElementById('addBtn').addEventListener('click', addEntry);
+  document.getElementById('excelBtn').addEventListener('click', exportToExcel);
+  document.getElementById('pdfBtn').addEventListener('click', exportToPDF);
+
+  async function addEntry() {
+    const btn = document.getElementById('addBtn');
+    btn.classList.add('loading'); btn.disabled = true;
+
+    const building = document.getElementById('building').value.trim();
+    const location = document.getElementById('location').value.trim();
+    const equipment = document.getElementById('equipment').value.trim();
+    const quantity = Number(document.getElementById('quantity').value);
+    const userEmail = currentUser.email;
+    const photoInput = document.getElementById('photo');
+
+    if (!building || !location || !equipment || quantity < 1) {
+      alert('Tous les champs sont requis');
+      btn.classList.remove('loading'); btn.disabled = false;
+      return;
+    }
+
+    let photoURL = null;
+    if (photoInput.files[0]) {
+      const photoFile = photoInput.files[0];
+      if (photoFile.size > 5 * 1024 * 1024) {
+        alert('Image trop volumineuse (<5 Mo)');
+        btn.classList.remove('loading'); btn.disabled = false;
+        return;
+      }
+      const uniqueName = Date.now() + '_' + photoFile.name;
+      const ref = storage.ref(`photos/${uniqueName}`);
+      await ref.put(photoFile);
+      photoURL = await ref.getDownloadURL();
+    }
+
+    const data = { building, location, equipment, quantity, userEmail, photoURL, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
+    try {
+      await db.collection('inventaire').add(data);
+      alert('Donnée ajoutée !');
+      document.getElementById('entryForm').reset();
+      renderTable();
+    } catch (e) {
+      alert('Erreur : ' + e.message);
+    }
+
+    btn.classList.remove('loading'); btn.disabled = false;
+  }
+
+  async function renderTable() {
+    const tbody = document.querySelector('#dataTable tbody');
+    tbody.innerHTML = '';
+    const snapshot = await db.collection('inventaire').orderBy('timestamp', 'desc').get();
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${d.building}</td>
+        <td>${d.location}</td>
+        <td>${d.equipment}</td>
+        <td>${d.quantity}</td>
+        <td>${d.userEmail}</td>
+        <td>${d.photoURL ? '<img src="' + d.photoURL + '">' : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function exportToExcel() {
+    let csv = '﻿Bâtiment,Localisation,Équipement,Nombre,Email,PhotoURL
+';
+    db.collection('inventaire').get().then(snapshot => {
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        csv += `${d.building},${d.location},${d.equipment},${d.quantity},${d.userEmail},${d.photoURL || ''}
+`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'inventaire.csv';
+      a.click();
+    });
+  }
+
+  function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text('Inventaire Technique - PDF', 10, 10);
+
+    const rows = [];
+    db.collection('inventaire').get().then(snapshot => {
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        rows.push([d.building, d.location, d.equipment, d.quantity.toString(), d.userEmail]);
+      });
+      doc.autoTable({ startY: 20,
+        head: [['Bâtiment','Localisation','Équipement','Quantité','Email']],
+        body: rows,
+        styles: { fontSize: 10 }
+      });
+      doc.save('inventaire.pdf');
+    });
+  }
+</script>
+
+</body>
+</html>
