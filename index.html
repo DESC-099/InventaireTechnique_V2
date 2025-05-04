@@ -9,7 +9,8 @@
     label { display: inline-block; width: 120px; margin-top: 10px; }
     input, button { margin: 5px; padding: 5px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
+    img { max-width: 100px; max-height: 100px; }
   </style>
 </head>
 <body>
@@ -25,6 +26,8 @@
     <input id="quantity" type="number" min="1" value="1" required><br>
     <label for="agent">Agent (initiales) :</label>
     <input id="agent" maxlength="5" placeholder="ex: JD" required><br>
+    <label for="photo">Photo :</label>
+    <input id="photo" type="file" accept="image/*"><br>
     <button type="button" id="addBtn">Ajouter</button>
     <button type="button" id="backupBtn">Sauvegarde JSON</button>
     <button type="button" id="excelBtn">Export Excel</button>
@@ -39,12 +42,13 @@
         <th>Intitulé</th>
         <th>Nombre</th>
         <th>Agent</th>
+        <th>Photo</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
-  <!-- Chargement des librairies externes -->
+  <!-- Librairies externes -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 
@@ -52,14 +56,9 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
-      getFirestore,
-      collection,
-      addDoc,
-      getDocs,
-      query,
-      orderBy,
-      serverTimestamp
+      getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
     // Configuration Firebase
     const firebaseConfig = {
@@ -74,8 +73,9 @@
     // Initialisation
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const storage = getStorage(app);
 
-    // Références DOM
+    // DOM
     const form = document.getElementById('entryForm');
     const addBtn = document.getElementById('addBtn');
     const backupBtn = document.getElementById('backupBtn');
@@ -83,7 +83,6 @@
     const pdfBtn = document.getElementById('pdfBtn');
     const tbody = document.querySelector('#dataTable tbody');
 
-    // Événements
     addBtn.addEventListener('click', addEntry);
     backupBtn.addEventListener('click', backupJSON);
     excelBtn.addEventListener('click', exportToExcel);
@@ -96,23 +95,36 @@
       const title = document.getElementById('title').value.trim();
       const quantity = Number(document.getElementById('quantity').value);
       const agent = document.getElementById('agent').value.trim();
+      const photoInput = document.getElementById('photo');
       if (!building || !location || !title || quantity < 1 || !agent) {
         return alert('Tous les champs sont requis');
       }
+      let photoURL = '';
+      if (photoInput.files.length > 0) {
+        const file = photoInput.files[0];
+        if (file.size > 5 * 1024 * 1024) {
+          return alert('La photo doit faire moins de 5 Mo');
+        }
+        const name = Date.now() + '_' + file.name;
+        const ref = storageRef(storage, `photos/${name}`);
+        try {
+          await uploadBytes(ref, file);
+          photoURL = await getDownloadURL(ref);
+        } catch (e) {
+          console.error('Erreur upload photo :', e);
+          alert('Erreur lors de l'upload de la photo');
+          return;
+        }
+      }
       try {
         await addDoc(collection(db, 'inventaire'), {
-          building,
-          location,
-          title,
-          quantity,
-          agent,
+          building, location, title, quantity, agent, photoURL,
           timestamp: serverTimestamp()
         });
-        form.reset();
-        renderTable();
+        form.reset(); renderTable();
       } catch (e) {
         console.error('Erreur addEntry :', e);
-        alert('Erreur lors de l\'ajout : ' + e.message);
+        alert('Erreur lors de l'ajout : ' + e.message);
       }
     }
 
@@ -121,8 +133,7 @@
       tbody.innerHTML = '';
       try {
         const snapshot = await getDocs(query(
-          collection(db, 'inventaire'),
-          orderBy('timestamp', 'desc')
+          collection(db, 'inventaire'), orderBy('timestamp', 'desc')
         ));
         snapshot.forEach(doc => {
           const d = doc.data();
@@ -133,11 +144,13 @@
             <td>${d.title}</td>
             <td>${d.quantity}</td>
             <td>${d.agent}</td>
+            <td>${d.photoURL ? `<img src="${d.photoURL}">` : ''}</td>
           `;
           tbody.appendChild(tr);
         });
       } catch (e) {
         console.error('Erreur renderTable :', e);
+        alert('Impossible de charger les données');
       }
     }
 
@@ -154,17 +167,18 @@
         a.click();
       } catch (e) {
         console.error('Erreur backupJSON :', e);
+        alert('Erreur lors de la sauvegarde JSON');
       }
     }
 
-    // Export CSV (Excel)
+    // Export Excel
     async function exportToExcel() {
       try {
-        let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent\n';
+        let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,PhotoURL\n';
         const snapshot = await getDocs(collection(db, 'inventaire'));
         snapshot.forEach(doc => {
           const d = doc.data();
-          csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent}\n`;
+          csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.photoURL}\n`;
         });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
@@ -173,6 +187,7 @@
         a.click();
       } catch (e) {
         console.error('Erreur exportToExcel :', e);
+        alert('Erreur lors de l\'export Excel');
       }
     }
 
@@ -186,16 +201,18 @@
         const rows = [];
         snapshot.forEach(doc => {
           const d = doc.data();
-          rows.push([d.building, d.location, d.title, d.quantity.toString(), d.agent]);
+          rows.push([d.building, d.location, d.title, d.quantity.toString(), d.agent, d.photoURL]);
         });
-        doc.autoTable({
-          startY: 20,
-          head: [['Bâtiment', 'Localisation', 'Intitulé', 'Nombre', 'Agent']],
+        doc.autoTable({ startY: 20,
+          head: [['Bâtiment', 'Localisation', 'Intitulé', 'Nombre', 'Agent', 'PhotoURL']],
           body: rows,
           styles: { fontSize: 10 }
         });
         doc.save('inventaire.pdf');
-      }).catch(e => console.error('Erreur exportToPDF :', e));
+      }).catch(e => {
+        console.error('Erreur exportToPDF :', e);
+        alert('Erreur lors de l\'export PDF');
+      });
     }
 
     // Initialisation
