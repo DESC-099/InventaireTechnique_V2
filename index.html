@@ -138,6 +138,7 @@
         photoPreview.src = currentPhotoURL;
         photoPreview.style.display = "block";
       } else {
+        photoPreview.removeAttribute("src");
         photoPreview.style.display = "none";
       }
       document.getElementById("photo").value = null;
@@ -199,16 +200,15 @@
         }
       }
 
-      const base = { building, location, title, quantity, agent, observations };
-      return isEdit ? { ...base, photoURL } : { ...base, photoURL };
+      return { building, location, title, quantity, agent, observations, photoURL };
     }
 
-    // Reset du formulaire
+    // Réinitialiser le formulaire
     function resetForm() {
       form.reset();
       editingId = null;
       currentPhotoURL = "";
-      photoPreview.src = "";
+      photoPreview.removeAttribute("src");
       photoPreview.style.display = "none";
       addBtn.textContent = "Ajouter";
       cancelBtn.style.display = "none";
@@ -242,13 +242,13 @@
       }
     }
 
-    // Sauvegarde JSON
+    // Sauvegarder en JSON
     async function backupJSON() {
       try {
         const arr = [];
         const snapshot = await getDocs(collection(db, "inventaire"));
         snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
-        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: "application/json" });
+        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: "application/json"');
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `inventaire_backup_${new Date().toISOString()}.json`;
