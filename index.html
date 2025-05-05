@@ -7,11 +7,13 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     label { display: inline-block; width: 120px; margin-top: 10px; }
-    input, button, textarea { margin: 5px; padding: 5px; }
+    input, button, textarea, select { margin: 5px; padding: 5px; }
     /* Réduction de moitié de la largeur des champs localisation, nombre et agent */
     #location, #quantity, #agent { width: 100px; }
     textarea { width: calc(100% - 150px); }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    #filters { margin-top: 20px; }
+    #filters label { width: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     img { max-width: 100px; max-height: 100px; display: block; }
     #currentPhotoPreview { margin-left: 125px; display: none; }
@@ -40,6 +42,14 @@
     <button type="button" id="cancelBtn" style="display:none;">Annuler</button>
   </form>
 
+  <!-- Filtres -->
+  <div id="filters">
+    <label for="filterBuilding">Filtrer Bâtiment : <input id="filterBuilding" placeholder="Tous"></label>
+    <label for="filterAgent">Filtrer Agent : <input id="filterAgent" placeholder="Tous"></label>
+    <label for="filterLocation">Filtrer Localisation : <input id="filterLocation" placeholder="Tous"></label>
+    <button type="button" id="clearFiltersBtn">Effacer filtres</button>
+  </div>
+
   <table id="dataTable">
     <thead>
       <tr>
@@ -64,10 +74,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
-    // *** Assurez-vous d'utiliser votre configuration Firebase d'origine ici ***
     const firebaseConfig = {
       apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
       authDomain: "inventairetechnique.firebaseapp.com",
@@ -76,11 +85,11 @@
       messagingSenderId: "783866462106",
       appId: "1:783866462106:web:7bc5eca39df86773efc423"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const storage = getStorage(app);
 
+    // DOM
     const form = document.getElementById("entryForm");
     const actionBtn = document.getElementById("actionBtn");
     const cancelBtn = document.getElementById("cancelBtn");
@@ -89,6 +98,10 @@
     const pdfBtn = document.getElementById("pdfBtn");
     const tbody = document.querySelector("#dataTable tbody");
     const photoPreview = document.getElementById("currentPhotoPreview");
+    const filterBuilding = document.getElementById("filterBuilding");
+    const filterAgent = document.getElementById("filterAgent");
+    const filterLocation = document.getElementById("filterLocation");
+    const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 
     let editingId = null;
     let currentPhotoURL = "";
@@ -98,6 +111,11 @@
     backupBtn.addEventListener("click", backupJSON);
     excelBtn.addEventListener("click", exportToExcel);
     pdfBtn.addEventListener("click", exportToPDF);
+    [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener("input", renderTable));
+    clearFiltersBtn.addEventListener("click", () => {
+      filterBuilding.value = filterAgent.value = filterLocation.value = '';
+      renderTable();
+    });
 
     async function addEntry() {
       const entry = await collectFormData(); if (!entry) return;
@@ -128,6 +146,12 @@
       resetForm(); renderTable();
     }
 
+    async function deleteEntry(id) {
+      if (!confirm('Supprimer cet enregistrement ?')) return;
+      await deleteDoc(doc(db, 'inventaire', id));
+      renderTable();
+    }
+
     async function collectFormData() {
       const building = document.getElementById('building').value.trim();
       const location = document.getElementById('location').value.trim();
@@ -135,12 +159,12 @@
       const quantity = Number(document.getElementById('quantity').value);
       const agent = document.getElementById('agent').value.trim();
       const observations = document.getElementById('observations').value.trim();
-      if (!building||!location||!title||quantity<1||!agent) return alert('Champs obligatoires');
-      if (observations.length>1000) return alert('Observations max 1000 caractères');
+      if (!building||!location||!title||quantity<1||!agent) { alert('Champs obligatoires'); return null; }
+      if (observations.length>1000) { alert('Observations max 1000 caractères'); return null; }
       let photoURL = currentPhotoURL;
       const fileInput = document.getElementById('photo');
       if (fileInput.files.length) {
-        const file = fileInput.files[0]; if(file.size>5*1024*1024) return alert('Photo < 5Mo');
+        const file = fileInput.files[0]; if(file.size>5*1024*1024) { alert('Photo < 5 Mo'); return null; }
         const ref = storageRef(storage, `photos/${Date.now()}_${file.name}`);
         await uploadBytes(ref, file);
         photoURL = await getDownloadURL(ref);
@@ -155,12 +179,19 @@
     }
 
     async function renderTable() {
-      tbody.innerHTML='';
-      const snapshot = await getDocs(query(collection(db,'inventaire'), orderBy('timestamp','desc')));
-      snapshot.forEach(item=>{
-        const d=item.data();
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
+      tbody.innerHTML = '';
+      const snap = await getDocs(query(collection(db, 'inventaire'), orderBy('timestamp','desc')));
+      const fb = filterBuilding.value.trim().toLowerCase();
+      const fa = filterAgent.value.trim().toLowerCase();
+      const fl = filterLocation.value.trim().toLowerCase();
+      snap.forEach(item => {
+        const d = item.data();
+        // filtrage
+        if (fb && !d.building.toLowerCase().includes(fb)) return;
+        if (fa && !d.agent.toLowerCase().includes(fa)) return;
+        if (fl && !d.location.toLowerCase().includes(fl)) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
           <td>${d.building}</td>
           <td>${d.location}</td>
           <td>${d.title}</td>
@@ -169,40 +200,44 @@
           <td>${d.observations||''}</td>
           <td>${d.photoURL?`<img src="${d.photoURL}">`:''}</td>
         `;
-        const tdAct=document.createElement('td');
-        const btn=document.createElement('button');btn.type='button';btn.textContent='Modifier';
-        btn.addEventListener('click',()=> startEdit(item.id,d));
-        tdAct.appendChild(btn);tr.appendChild(tdAct);
+        const tdAct = document.createElement('td');
+        const btnMod = document.createElement('button'); btnMod.type='button'; btnMod.textContent='Modifier';
+        btnMod.addEventListener('click', () => startEdit(item.id, d));
+        const btnDel = document.createElement('button'); btnDel.type='button'; btnDel.textContent='Supprimer';
+        btnDel.addEventListener('click', () => deleteEntry(item.id));
+        tdAct.append(btnMod, btnDel);
+        tr.appendChild(tdAct);
         tbody.appendChild(tr);
       });
     }
 
     async function backupJSON() {
-      const arr=[];const snap=await getDocs(collection(db,'inventaire'));
-      snap.forEach(d=>arr.push({id:d.id,...d.data()}));
-      const blob=new Blob([JSON.stringify(arr,null,2)],{type:'application/json'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-      a.download=`inventaire_backup_${new Date().toISOString()}.json`;a.click();
+      const arr = [];
+      (await getDocs(collection(db,'inventaire'))).forEach(d => arr.push({id:d.id,...d.data()}));
+      const blob = new Blob([JSON.stringify(arr,null,2)],{type:'application/json'});
+      const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`inventaire_backup_${new Date().toISOString()}.json`; a.click();
     }
 
     async function exportToExcel() {
       let csv='\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
-      const snap=await getDocs(collection(db,'inventaire'));
-      snap.forEach(d=>{const v=d.data();csv+=`${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`;});
+      (await getDocs(collection(db,'inventaire'))).forEach(d=>{const v=d.data();csv+=`${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`;});
       const blob=new Blob([csv],{type:'text/csv'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-      a.download='inventaire.csv';a.click();
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download='inventaire.csv'; a.click();
     }
 
     function exportToPDF() {
-      const {jsPDF}=window.jspdf;const doc=new jsPDF();doc.setFontSize(14);doc.text('Inventaire Technique',10,10);
+      const { jsPDF } = window.jspdf; const doc = new jsPDF(); doc.setFontSize(14); doc.text('Inventaire Technique',10,10);
       getDocs(collection(db,'inventaire')).then(snap=>{
-        const rows=[];snap.forEach(item=>{const v=item.data();rows.push([v.building,v.location,v.title,v.quantity.toString(),v.agent,v.observations||'',v.photoURL]);});
-        doc.autoTable({head:[['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']],body:rows,startY:20});doc.save('inventaire.pdf');
+        const rows=[];
+        snap.forEach(i=>{const v=i.data();rows.push([v.building,v.location,v.title,v.quantity.toString(),v.agent,v.observations||'',v.photoURL]);});
+        doc.autoTable({head:[['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']],body:rows,startY:20});
+        doc.save('inventaire.pdf');
       });
     }
 
-    // Démarrage
+    // initialisation
     renderTable();
   </script>
 </body>
