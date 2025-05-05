@@ -7,10 +7,13 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     label { display: inline-block; width: 120px; margin-top: 10px; }
-    input, button { margin: 5px; padding: 5px; }
+    input, button, textarea { margin: 5px; padding: 5px; }
+    /* Réduire de moitié la largeur des champs localisation, nombre et agent */
+    #location, #quantity, #agent { width: 100px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     img { max-width: 100px; max-height: 100px; }
+    textarea { width: calc(100% - 150px); /* ajustement pour observation */ }
   </style>
 </head>
 <body>
@@ -26,6 +29,8 @@
     <input id="quantity" type="number" min="1" value="1" required><br>
     <label for="agent">Agent (initiales) :</label>
     <input id="agent" maxlength="5" placeholder="ex: JD" required><br>
+    <label for="observations">Observations :</label>
+    <textarea id="observations" maxlength="1000" rows="4" placeholder="Observations (max 1000 caractères)"></textarea><br>
     <label for="photo">Photo :</label>
     <input id="photo" type="file" accept="image/*"><br>
     <button type="button" id="addBtn">Ajouter</button>
@@ -42,6 +47,7 @@
         <th>Intitulé</th>
         <th>Nombre</th>
         <th>Agent</th>
+        <th>Observations</th>
         <th>Photo</th>
       </tr>
     </thead>
@@ -95,9 +101,13 @@
       const title = document.getElementById("title").value.trim();
       const quantity = Number(document.getElementById("quantity").value);
       const agent = document.getElementById("agent").value.trim();
+      const observations = document.getElementById("observations").value.trim();
       const photoInput = document.getElementById("photo");
       if (!building || !location || !title || quantity < 1 || !agent) {
-        return alert("Tous les champs sont requis");
+        return alert("Tous les champs sauf observations et photo sont requis");
+      }
+      if (observations.length > 1000) {
+        return alert("Les observations ne doivent pas dépasser 1000 caractères");
       }
       let photoURL = "";
       if (photoInput.files.length > 0) {
@@ -112,16 +122,16 @@
           photoURL = await getDownloadURL(ref);
         } catch (e) {
           console.error("Erreur upload photo :", e);
-          alert("Erreur lors de l'upload de la photo");
-          return;
+          return alert("Erreur lors de l'upload de la photo");
         }
       }
       try {
         await addDoc(collection(db, "inventaire"), {
-          building, location, title, quantity, agent, photoURL,
+          building, location, title, quantity, agent, observations, photoURL,
           timestamp: serverTimestamp()
         });
-        form.reset(); renderTable();
+        form.reset();
+        renderTable();
       } catch (e) {
         console.error("Erreur addEntry :", e);
         alert("Erreur lors de l'ajout : " + e.message);
@@ -144,7 +154,8 @@
             <td>${d.title}</td>
             <td>${d.quantity}</td>
             <td>${d.agent}</td>
-            <td>${d.photoURL ? `<img src=\"${d.photoURL}\">` : ""}</td>
+            <td>${d.observations || ''}</td>
+            <td>${d.photoURL ? `<img src="${d.photoURL}">` : ""}</td>
           `;
           tbody.appendChild(tr);
         });
@@ -174,11 +185,11 @@
     // Export Excel
     async function exportToExcel() {
       try {
-        let csv = "\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,PhotoURL\n";
+        let csv = "\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n";
         const snapshot = await getDocs(collection(db, "inventaire"));
         snapshot.forEach(doc => {
           const d = doc.data();
-          csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.photoURL}\n`;
+          csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.observations},${d.photoURL}\n`;
         });
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const a = document.createElement("a");
@@ -201,10 +212,12 @@
         const rows = [];
         snapshot.forEach(doc => {
           const d = doc.data();
-          rows.push([d.building, d.location, d.title, d.quantity.toString(), d.agent, d.photoURL]);
+          rows.push([
+            d.building, d.location, d.title, d.quantity.toString(), d.agent, d.observations || '', d.photoURL
+          ]);
         });
         doc.autoTable({ startY: 20,
-          head: [["Bâtiment", "Localisation", "Intitulé", "Nombre", "Agent", "PhotoURL"]],
+          head: [["Bâtiment", "Localisation", "Intitulé", "Nombre", "Agent", "Observations", "PhotoURL"]],
           body: rows,
           styles: { fontSize: 10 }
         });
