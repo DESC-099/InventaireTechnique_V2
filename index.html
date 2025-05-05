@@ -67,10 +67,7 @@
   <!-- Script principal -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-    import {
-      getFirestore, collection, addDoc, getDocs, // suppression temporaire de orderBy
-      serverTimestamp, doc, updateDoc
-    } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
     // Configuration Firebase
@@ -108,18 +105,11 @@
     pdfBtn.addEventListener("click", exportToPDF);
 
     async function addEntry() {
-      const entry = await collectFormData();
-      if (!entry) return;
+      const entry = await collectFormData(); if (!entry) return;
       try {
-        await addDoc(collection(db, "inventaire"), {
-          ...entry,
-          timestamp: serverTimestamp()
-        });
+        await addDoc(collection(db, "inventaire"), { ...entry, timestamp: serverTimestamp() });
         resetForm(); renderTable();
-      } catch (e) {
-        console.error("Erreur addEntry :", e);
-        alert("Erreur lors de l'ajout : " + e.message);
-      }
+      } catch (e) { console.error("Erreur addEntry :", e); alert("Erreur lors de l'ajout : " + e.message); }
     }
 
     function startEdit(id, data) {
@@ -144,16 +134,12 @@
     }
 
     async function saveEdit() {
-      const entry = await collectFormData(true);
-      if (!entry) return;
+      const entry = await collectFormData(true); if (!entry) return;
       try {
         const docRef = doc(db, "inventaire", editingId);
         await updateDoc(docRef, entry);
         resetForm(); renderTable();
-      } catch (e) {
-        console.error("Erreur saveEdit :", e);
-        alert("Erreur lors de la modification : " + e.message);
-      }
+      } catch (e) { console.error("Erreur saveEdit :", e); alert("Erreur lors de la modification : " + e.message); }
     }
 
     async function collectFormData() {
@@ -164,132 +150,83 @@
       const agent = document.getElementById("agent").value.trim();
       const observations = document.getElementById("observations").value.trim();
       const photoInput = document.getElementById("photo");
-      if (!building || !location || !title || quantity < 1 || !agent) {
-        alert("Tous les champs sauf observations et photo sont requis");
-        return null;
-      }
-      if (observations.length > 1000) {
-        alert("Les observations ne doivent pas dépasser 1000 caractères");
-        return null;
-      }
+      if (!building || !location || !title || quantity < 1 || !agent) { alert("Tous les champs sauf observations et photo sont requis"); return null; }
+      if (observations.length > 1000) { alert("Les observations ne doivent pas dépasser 1000 caractères"); return null; }
       let photoURL = currentPhotoURL;
-      if (photoInput.files.length > 0) {
-        const file = photoInput.files[0];
-        if (file.size > 5 * 1024 * 1024) {
-          alert("La photo doit faire moins de 5 Mo");
-          return null;
-        }
-        const name = Date.now() + "_" + file.name;
+      if (photoInput.files.length) {
+        const file = photoInput.files[0]; if (file.size > 5*1024*1024) { alert("La photo doit faire moins de 5 Mo"); return null; }
+        const name = Date.now()+"_"+file.name;
         const ref = storageRef(storage, `photos/${name}`);
-        try {
-          await uploadBytes(ref, file);
-          photoURL = await getDownloadURL(ref);
-        } catch (e) {
-          console.error("Erreur upload photo :", e);
-          alert("Erreur lors de l'upload de la photo");
-          return null;
-        }
+        try { await uploadBytes(ref, file); photoURL = await getDownloadURL(ref); }
+        catch (e) { console.error("Erreur upload photo :", e); alert("Erreur lors de l'upload de la photo"); return null; }
       }
       return { building, location, title, quantity, agent, observations, photoURL };
     }
 
     function resetForm() {
-      form.reset();
-      editingId = null;
-      currentPhotoURL = "";
-      photoPreview.removeAttribute("src");
-      photoPreview.style.display = "none";
-      addBtn.textContent = "Ajouter";
-      cancelBtn.style.display = "none";
+      form.reset(); editingId=null; currentPhotoURL="";
+      photoPreview.removeAttribute("src"); photoPreview.style.display="none";
+      addBtn.textContent="Ajouter"; cancelBtn.style.display="none";
     }
 
-    // Afficher la table avec logs de debug
     async function renderTable() {
-      tbody.innerHTML = "";
+      tbody.innerHTML="";
       try {
-        // DEBUG: suppression temporaire de orderBy pour éviter besoin d'index
         const snapshot = await getDocs(collection(db, "inventaire"));
         console.log("renderTable – snapshot.size =", snapshot.size);
-        console.log(snapshot.docs.map(d => ({ id: d.id, data: d.data() })));
-        snapshot.forEach(docItem => {
-          const d = docItem.data();
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
+        console.log(snapshot.docs.map(d=>({id:d.id,data:d.data()})));
+        snapshot.forEach(docItem=>{
+          const d=docItem.data();
+          const tr=document.createElement("tr");
+          tr.innerHTML=`
             <td>${d.building}</td>
             <td>${d.location}</td>
             <td>${d.title}</td>
             <td>${d.quantity}</td>
             <td>${d.agent}</td>
-            <td>${d.observations || ''}</td>
-            <td>${d.photoURL ? `<img src=\"${d.photoURL}\">` : ""}</td>
-            <td><button type=\"button\" onclick=\"startEdit('${docItem.id}', ${JSON.stringify(d)})\">Modifier</button></td>
+            <td>${d.observations||''}</td>
+            <td>${d.photoURL?`<img src="${d.photoURL}">":''}</td>
           `;
+          const tdAct=document.createElement("td");
+          const btn=document.createElement("button");
+          btn.type="button"; btn.textContent="Modifier";
+          btn.addEventListener("click",()=>startEdit(docItem.id,d));
+          tdAct.appendChild(btn);
+          tr.appendChild(tdAct);
           tbody.appendChild(tr);
         });
-      } catch (e) {
-        console.error("Erreur renderTable :", e);
-        alert("Impossible de charger les données");
-      }
+      } catch(e){ console.error("Erreur renderTable :",e); alert("Impossible de charger les données"); }
     }
 
     async function backupJSON() {
       try {
-        const arr = [];
-        const snapshot = await getDocs(collection(db, "inventaire"));
-        snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
-        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: "application/json" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `inventaire_backup_${new Date().toISOString()}.json`;
+        const arr=[];
+        const snap=await getDocs(collection(db,"inventaire"));
+        snap.forEach(doc=>arr.push({id:doc.id,...doc.data()}));
+        const blob=new Blob([JSON.stringify(arr,null,2)],{type:"application/json"});
+        const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+        a.download=`inventaire_backup_${new Date().toISOString()}.json`;
         a.click();
-      } catch (e) {
-        console.error("Erreur backupJSON :", e);
-        alert("Erreur lors de la sauvegarde JSON");
-      }
+      } catch(e){ console.error("Erreur backupJSON :",e); alert("Erreur lors de la sauvegarde JSON"); }
     }
 
     async function exportToExcel() {
       try {
-        let csv = "\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n";
-        const snapshot = await getDocs(collection(db, "inventaire"));
-        snapshot.forEach(doc => {
-          const d = doc.data();
-          csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.observations},${d.photoURL}\n`;
-        });
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "inventaire.csv";
-        a.click();
-      } catch (e) {
-        console.error("Erreur exportToExcel :", e);
-        alert("Erreur lors de l'export Excel");
-      }
+        let csv="\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n";
+        const snap=await getDocs(collection(db,"inventaire"));
+        snap.forEach(doc=>{const d=doc.data(); csv+=`${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.observations},${d.photoURL}\n`;});
+        const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");
+        a.href=URL.createObjectURL(blob);a.download="inventaire.csv";a.click();
+      } catch(e){ console.error("Erreur exportToExcel :",e); alert("Erreur lors de l'export Excel"); }
     }
 
     function exportToPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      doc.setFontSize(14);
-      doc.text("Inventaire Technique", 10, 10);
-      getDocs(collection(db, "inventaire")).then(snapshot => {
-        const rows = [];
-        snapshot.forEach(docItem => {
-          const d = docItem.data();
-          rows.push([
-            d.building, d.location, d.title, d.quantity.toString(), d.agent, d.observations || '', d.photoURL
-          ]);
-        });
-        doc.autoTable({ startY: 20,
-          head: [["Bâtiment", "Localisation", "Intitulé", "Nombre", "Agent", "Observations", "PhotoURL"]],
-          body: rows,
-          styles: { fontSize: 10 }
-        });
+      const {jsPDF}=window.jspdf;const doc=new jsPDF();doc.setFontSize(14);doc.text("Inventaire Technique",10,10);
+      getDocs(collection(db,"inventaire")).then(snap=>{
+        const rows=[];snap.forEach(docItem=>{const d=docItem.data();rows.push([d.building,d.location,d.title,d.quantity.toString(),d.agent,d.observations||'',d.photoURL]);});
+        doc.autoTable({startY:20,head:[["Bâtiment","Localisation","Intitulé","Nombre","Agent","Observations","PhotoURL"]],body:rows,styles:{fontSize:10}});
         doc.save("inventaire.pdf");
-      }).catch(e => {
-        console.error("Erreur exportToPDF :", e);
-        alert("Erreur lors de l'export PDF");
-      });
+      }).catch(e=>{console.error("Erreur exportToPDF :",e);alert("Erreur lors de l'export PDF");});
     }
 
     // Initialisation
