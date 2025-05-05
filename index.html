@@ -10,10 +10,12 @@
     input, button, textarea { margin: 5px; padding: 5px; }
     /* Réduction de moitié de la largeur des champs localisation, nombre et agent */
     #location, #quantity, #agent { width: 100px; }
+    /* Ajustement pour textarea observations */
+    textarea { width: calc(100% - 150px); }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     img { max-width: 100px; max-height: 100px; }
-    textarea { width: calc(100% - 150px); /* ajustement pour observation */ }
+    #currentPhotoPreview { margin-left: 125px; display: none; }
   </style>
 </head>
 <body>
@@ -31,7 +33,9 @@
     <input id="agent" maxlength="5" placeholder="ex: JD" required><br>
     <label for="observations">Observations :</label>
     <textarea id="observations" maxlength="1000" rows="4" placeholder="Observations (max 1000 caractères)"></textarea><br>
-    <label for="photo">Photo :</label>
+    <label>Photo actuelle :</label>
+    <img id="currentPhotoPreview" src="" alt="Aperçu photo"><br>
+    <label for="photo">Nouvelle photo :</label>
     <input id="photo" type="file" accept="image/*"><br>
     <button type="button" id="addBtn">Ajouter</button>
     <button type="button" id="cancelBtn" style="display:none;">Annuler</button>
@@ -79,12 +83,12 @@
       appId: "1:783866462106:web:7bc5eca39df86773efc423"
     };
 
-    // Initialisation
+    // Initialisation Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-    // DOM
+    // DOM Elements
     const form = document.getElementById("entryForm");
     const addBtn = document.getElementById("addBtn");
     const cancelBtn = document.getElementById("cancelBtn");
@@ -92,8 +96,10 @@
     const excelBtn = document.getElementById("excelBtn");
     const pdfBtn = document.getElementById("pdfBtn");
     const tbody = document.querySelector("#dataTable tbody");
+    const photoPreview = document.getElementById("currentPhotoPreview");
 
     let editingId = null;
+    let currentPhotoURL = "";
 
     addBtn.addEventListener("click", () => editingId ? saveEdit() : addEntry());
     cancelBtn.addEventListener("click", resetForm);
@@ -101,23 +107,24 @@
     excelBtn.addEventListener("click", exportToExcel);
     pdfBtn.addEventListener("click", exportToPDF);
 
-    // Ajouter une entrée
+    // Fonction pour ajouter une entrée
     async function addEntry() {
-      const entry = collectFormData();
+      const entry = await collectFormData();
       if (!entry) return;
       try {
         await addDoc(collection(db, "inventaire"), {
           ...entry,
           timestamp: serverTimestamp()
         });
-        resetForm(); renderTable();
+        resetForm();
+        renderTable();
       } catch (e) {
         console.error("Erreur addEntry :", e);
         alert("Erreur lors de l'ajout : " + e.message);
       }
     }
 
-    // Démarrer modification
+    // Démarrer la modification
     function startEdit(id, data) {
       editingId = id;
       document.getElementById("building").value = data.building;
@@ -126,26 +133,35 @@
       document.getElementById("quantity").value = data.quantity;
       document.getElementById("agent").value = data.agent;
       document.getElementById("observations").value = data.observations || "";
+      currentPhotoURL = data.photoURL || "";
+      if (currentPhotoURL) {
+        photoPreview.src = currentPhotoURL;
+        photoPreview.style.display = "block";
+      } else {
+        photoPreview.style.display = "none";
+      }
+      document.getElementById("photo").value = null;
       addBtn.textContent = "Enregistrer";
       cancelBtn.style.display = "inline";
     }
 
-    // Sauvegarder modification
+    // Sauvegarder la modification
     async function saveEdit() {
-      const entry = collectFormData();
+      const entry = await collectFormData(true);
       if (!entry) return;
       try {
         const docRef = doc(db, "inventaire", editingId);
         await updateDoc(docRef, entry);
-        resetForm(); renderTable();
+        resetForm();
+        renderTable();
       } catch (e) {
         console.error("Erreur saveEdit :", e);
         alert("Erreur lors de la modification : " + e.message);
       }
     }
 
-    // Collecte et validation
-    function collectFormData() {
+    // Collecte et validation des données (upload si nécessaire)
+    async function collectFormData(isEdit = false) {
       const building = document.getElementById("building").value.trim();
       const location = document.getElementById("location").value.trim();
       const title = document.getElementById("title").value.trim();
@@ -153,19 +169,47 @@
       const agent = document.getElementById("agent").value.trim();
       const observations = document.getElementById("observations").value.trim();
       const photoInput = document.getElementById("photo");
+
       if (!building || !location || !title || quantity < 1 || !agent) {
-        return alert("Tous les champs sauf observations et photo sont requis");
+        alert("Tous les champs sauf observations et photo sont requis");
+        return null;
       }
       if (observations.length > 1000) {
-        return alert("Les observations ne doivent pas dépasser 1000 caractères");
+        alert("Les observations ne doivent pas dépasser 1000 caractères");
+        return null;
       }
-      return { building, location, title, quantity, agent, observations };
+
+      // Gestion du photoURL
+      let photoURL = currentPhotoURL;
+      if (photoInput.files.length > 0) {
+        const file = photoInput.files[0];
+        if (file.size > 5 * 1024 * 1024) {
+          alert("La photo doit faire moins de 5 Mo");
+          return null;
+        }
+        const name = Date.now() + "_" + file.name;
+        const ref = storageRef(storage, `photos/${name}`);
+        try {
+          await uploadBytes(ref, file);
+          photoURL = await getDownloadURL(ref);
+        } catch (e) {
+          console.error("Erreur upload photo :", e);
+          alert("Erreur lors de l'upload de la photo");
+          return null;
+        }
+      }
+
+      const base = { building, location, title, quantity, agent, observations };
+      return isEdit ? { ...base, photoURL } : { ...base, photoURL };
     }
 
-    // Réinitialiser formulaire
+    // Reset du formulaire
     function resetForm() {
       form.reset();
       editingId = null;
+      currentPhotoURL = "";
+      photoPreview.src = "";
+      photoPreview.style.display = "none";
       addBtn.textContent = "Ajouter";
       cancelBtn.style.display = "none";
     }
