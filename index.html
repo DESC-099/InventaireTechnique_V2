@@ -248,7 +248,7 @@
         const arr = [];
         const snapshot = await getDocs(collection(db, "inventaire"));
         snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
-        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: "application/json"');
+        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: "application/json" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `inventaire_backup_${new Date().toISOString()}.json`;
@@ -267,46 +267,3 @@
         snapshot.forEach(doc => {
           const d = doc.data();
           csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.observations},${d.photoURL}\n`;
-        });
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "inventaire.csv";
-        a.click();
-      } catch (e) {
-        console.error("Erreur exportToExcel :", e);
-        alert("Erreur lors de l'export Excel");
-      }
-    }
-
-    // Export PDF
-    function exportToPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      doc.setFontSize(14);
-      doc.text("Inventaire Technique", 10, 10);
-      getDocs(collection(db, "inventaire")).then(snapshot => {
-        const rows = [];
-        snapshot.forEach(docItem => {
-          const d = docItem.data();
-          rows.push([
-            d.building, d.location, d.title, d.quantity.toString(), d.agent, d.observations || '', d.photoURL
-          ]);
-        });
-        doc.autoTable({ startY: 20,
-          head: [["Bâtiment", "Localisation", "Intitulé", "Nombre", "Agent", "Observations", "PhotoURL"]],
-          body: rows,
-          styles: { fontSize: 10 }
-        });
-        doc.save("inventaire.pdf");
-      }).catch(e => {
-        console.error("Erreur exportToPDF :", e);
-        alert("Erreur lors de l'export PDF");
-      });
-    }
-
-    // Initialisation
-    renderTable();
-  </script>
-</body>
-</html>
