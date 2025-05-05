@@ -56,7 +56,6 @@
     <tbody></tbody>
   </table>
 
-  <!-- Exports -->
   <button type="button" id="backupBtn">Sauvegarde JSON</button>
   <button type="button" id="excelBtn">Export Excel</button>
   <button type="button" id="pdfBtn">Export PDF</button>
@@ -65,13 +64,19 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-    import {
-      getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp,
-      doc, updateDoc
-    } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
-    const firebaseConfig = { /* votre config */ };
+    // *** Assurez-vous d'utiliser votre configuration Firebase d'origine ici ***
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
+      authDomain: "inventairetechnique.firebaseapp.com",
+      projectId: "inventairetechnique",
+      storageBucket: "inventairetechnique.appspot.com",
+      messagingSenderId: "783866462106",
+      appId: "1:783866462106:web:7bc5eca39df86773efc423"
+    };
+
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const storage = getStorage(app);
@@ -130,13 +135,12 @@
       const quantity = Number(document.getElementById('quantity').value);
       const agent = document.getElementById('agent').value.trim();
       const observations = document.getElementById('observations').value.trim();
-      if (!building || !location || !title || quantity < 1 || !agent) return alert('Champs obligatoires');
-      if (observations.length > 1000) return alert('Observations max 1000 caractères');
+      if (!building||!location||!title||quantity<1||!agent) return alert('Champs obligatoires');
+      if (observations.length>1000) return alert('Observations max 1000 caractères');
       let photoURL = currentPhotoURL;
       const fileInput = document.getElementById('photo');
       if (fileInput.files.length) {
-        const file = fileInput.files[0];
-        if (file.size > 5 * 1024 * 1024) return alert('Photo < 5Mo');
+        const file = fileInput.files[0]; if(file.size>5*1024*1024) return alert('Photo < 5Mo');
         const ref = storageRef(storage, `photos/${Date.now()}_${file.name}`);
         await uploadBytes(ref, file);
         photoURL = await getDownloadURL(ref);
@@ -145,63 +149,60 @@
     }
 
     function resetForm() {
-      form.reset(); editingId = null; currentPhotoURL = '';
-      photoPreview.removeAttribute('src'); photoPreview.style.display = 'none';
-      actionBtn.textContent = 'Ajouter'; cancelBtn.style.display = 'none';
+      form.reset(); editingId=null; currentPhotoURL='';
+      photoPreview.removeAttribute('src'); photoPreview.style.display='none';
+      actionBtn.textContent='Ajouter'; cancelBtn.style.display='none';
     }
 
     async function renderTable() {
-      tbody.innerHTML = '';
-      const snapshot = await getDocs(query(collection(db, 'inventaire'), orderBy('timestamp', 'desc')));
-      snapshot.forEach(docItem => {
-        const d = docItem.data();
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
+      tbody.innerHTML='';
+      const snapshot = await getDocs(query(collection(db,'inventaire'), orderBy('timestamp','desc')));
+      snapshot.forEach(item=>{
+        const d=item.data();
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
           <td>${d.building}</td>
           <td>${d.location}</td>
           <td>${d.title}</td>
           <td>${d.quantity}</td>
           <td>${d.agent}</td>
           <td>${d.observations||''}</td>
-          <td>${d.photoURL ? `<img src="${d.photoURL}">` : ''}</td>
-          <td><button type="button">Modifier</button></td>
+          <td>${d.photoURL?`<img src="${d.photoURL}">`:''}</td>
         `;
-        tr.querySelector('button').addEventListener('click', () => startEdit(docItem.id, d));
+        const tdAct=document.createElement('td');
+        const btn=document.createElement('button');btn.type='button';btn.textContent='Modifier';
+        btn.addEventListener('click',()=> startEdit(item.id,d));
+        tdAct.appendChild(btn);tr.appendChild(tdAct);
         tbody.appendChild(tr);
       });
     }
 
     async function backupJSON() {
-      const arr = [];
-      const snap = await getDocs(collection(db, 'inventaire'));
-      snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-      const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-      a.download = `inventaire_backup_${new Date().toISOString()}.json`;
-      a.click();
+      const arr=[];const snap=await getDocs(collection(db,'inventaire'));
+      snap.forEach(d=>arr.push({id:d.id,...d.data()}));
+      const blob=new Blob([JSON.stringify(arr,null,2)],{type:'application/json'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download=`inventaire_backup_${new Date().toISOString()}.json`;a.click();
     }
 
     async function exportToExcel() {
-      let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
-      const snap = await getDocs(collection(db, 'inventaire'));
-      snap.forEach(d => { const v = d.data(); csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`; });
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-      a.download = 'inventaire.csv'; a.click();
+      let csv='\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
+      const snap=await getDocs(collection(db,'inventaire'));
+      snap.forEach(d=>{const v=d.data();csv+=`${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`;});
+      const blob=new Blob([csv],{type:'text/csv'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download='inventaire.csv';a.click();
     }
 
     function exportToPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF(); doc.setFontSize(14); doc.text('Inventaire Technique', 10, 10);
-      getDocs(collection(db, 'inventaire')).then(snap => {
-        const rows = [];
-        snap.forEach(item => { const v = item.data(); rows.push([v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations||'', v.photoURL]); });
-        doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
-        doc.save('inventaire.pdf');
+      const {jsPDF}=window.jspdf;const doc=new jsPDF();doc.setFontSize(14);doc.text('Inventaire Technique',10,10);
+      getDocs(collection(db,'inventaire')).then(snap=>{
+        const rows=[];snap.forEach(item=>{const v=item.data();rows.push([v.building,v.location,v.title,v.quantity.toString(),v.agent,v.observations||'',v.photoURL]);});
+        doc.autoTable({head:[['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']],body:rows,startY:20});doc.save('inventaire.pdf');
       });
     }
 
-    // Lancement
+    // Démarrage
     renderTable();
   </script>
 </body>
