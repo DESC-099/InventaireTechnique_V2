@@ -34,7 +34,7 @@
     <label for="observations">Observations :</label>
     <textarea id="observations" maxlength="1000" rows="4" placeholder="Observations (max 1000 caractères)"></textarea><br>
     <label>Photo actuelle :</label>
-    <img id="currentPhotoPreview" src="" alt="Aperçu photo"><br>
+    <img id="currentPhotoPreview" alt="Aperçu photo"><br>
     <label for="photo">Nouvelle photo :</label>
     <input id="photo" type="file" accept="image/*"><br>
     <button type="button" id="addBtn">Ajouter</button>
@@ -68,8 +68,8 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
-      getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp,
-      doc, updateDoc
+      getFirestore, collection, addDoc, getDocs, // suppression temporaire de orderBy
+      serverTimestamp, doc, updateDoc
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
@@ -107,7 +107,6 @@
     excelBtn.addEventListener("click", exportToExcel);
     pdfBtn.addEventListener("click", exportToPDF);
 
-    // Fonction pour ajouter une entrée
     async function addEntry() {
       const entry = await collectFormData();
       if (!entry) return;
@@ -116,15 +115,13 @@
           ...entry,
           timestamp: serverTimestamp()
         });
-        resetForm();
-        renderTable();
+        resetForm(); renderTable();
       } catch (e) {
         console.error("Erreur addEntry :", e);
         alert("Erreur lors de l'ajout : " + e.message);
       }
     }
 
-    // Démarrer la modification
     function startEdit(id, data) {
       editingId = id;
       document.getElementById("building").value = data.building;
@@ -146,23 +143,20 @@
       cancelBtn.style.display = "inline";
     }
 
-    // Sauvegarder la modification
     async function saveEdit() {
       const entry = await collectFormData(true);
       if (!entry) return;
       try {
         const docRef = doc(db, "inventaire", editingId);
         await updateDoc(docRef, entry);
-        resetForm();
-        renderTable();
+        resetForm(); renderTable();
       } catch (e) {
         console.error("Erreur saveEdit :", e);
         alert("Erreur lors de la modification : " + e.message);
       }
     }
 
-    // Collecte et validation des données (upload si nécessaire)
-    async function collectFormData(isEdit = false) {
+    async function collectFormData() {
       const building = document.getElementById("building").value.trim();
       const location = document.getElementById("location").value.trim();
       const title = document.getElementById("title").value.trim();
@@ -170,7 +164,6 @@
       const agent = document.getElementById("agent").value.trim();
       const observations = document.getElementById("observations").value.trim();
       const photoInput = document.getElementById("photo");
-
       if (!building || !location || !title || quantity < 1 || !agent) {
         alert("Tous les champs sauf observations et photo sont requis");
         return null;
@@ -179,8 +172,6 @@
         alert("Les observations ne doivent pas dépasser 1000 caractères");
         return null;
       }
-
-      // Gestion du photoURL
       let photoURL = currentPhotoURL;
       if (photoInput.files.length > 0) {
         const file = photoInput.files[0];
@@ -199,11 +190,9 @@
           return null;
         }
       }
-
       return { building, location, title, quantity, agent, observations, photoURL };
     }
 
-    // Réinitialiser le formulaire
     function resetForm() {
       form.reset();
       editingId = null;
@@ -214,13 +203,14 @@
       cancelBtn.style.display = "none";
     }
 
-    // Afficher la table
+    // Afficher la table avec logs de debug
     async function renderTable() {
       tbody.innerHTML = "";
       try {
-        const snapshot = await getDocs(query(
-          collection(db, "inventaire"), orderBy("timestamp", "desc")
-        ));
+        // DEBUG: suppression temporaire de orderBy pour éviter besoin d'index
+        const snapshot = await getDocs(collection(db, "inventaire"));
+        console.log("renderTable – snapshot.size =", snapshot.size);
+        console.log(snapshot.docs.map(d => ({ id: d.id, data: d.data() })));
         snapshot.forEach(docItem => {
           const d = docItem.data();
           const tr = document.createElement("tr");
@@ -242,7 +232,6 @@
       }
     }
 
-    // Sauvegarder en JSON
     async function backupJSON() {
       try {
         const arr = [];
@@ -259,7 +248,6 @@
       }
     }
 
-    // Export Excel
     async function exportToExcel() {
       try {
         let csv = "\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n";
@@ -267,3 +255,45 @@
         snapshot.forEach(doc => {
           const d = doc.data();
           csv += `${d.building},${d.location},${d.title},${d.quantity},${d.agent},${d.observations},${d.photoURL}\n`;
+        });
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "inventaire.csv";
+        a.click();
+      } catch (e) {
+        console.error("Erreur exportToExcel :", e);
+        alert("Erreur lors de l'export Excel");
+      }
+    }
+
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(14);
+      doc.text("Inventaire Technique", 10, 10);
+      getDocs(collection(db, "inventaire")).then(snapshot => {
+        const rows = [];
+        snapshot.forEach(docItem => {
+          const d = docItem.data();
+          rows.push([
+            d.building, d.location, d.title, d.quantity.toString(), d.agent, d.observations || '', d.photoURL
+          ]);
+        });
+        doc.autoTable({ startY: 20,
+          head: [["Bâtiment", "Localisation", "Intitulé", "Nombre", "Agent", "Observations", "PhotoURL"]],
+          body: rows,
+          styles: { fontSize: 10 }
+        });
+        doc.save("inventaire.pdf");
+      }).catch(e => {
+        console.error("Erreur exportToPDF :", e);
+        alert("Erreur lors de l'export PDF");
+      });
+    }
+
+    // Initialisation
+    renderTable();
+  </script>
+</body>
+</html>
