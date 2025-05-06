@@ -27,7 +27,6 @@
 <body>
   <!-- Logo -->
   <header>
-    <!-- Assurez-vous que le dossier images contient bien logo.png -->
     <img src="images/logo.png" alt="Logo Inventaire Technique" class="logo">
   </header>
   <h2>Inventaire Technique</h2>
@@ -98,7 +97,7 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-    // Éléments DOM
+    // DOM
     const form = document.getElementById("entryForm");
     const actionBtn = document.getElementById("actionBtn");
     const cancelBtn = document.getElementById("cancelBtn");
@@ -128,8 +127,9 @@
       cancelBtn.style.display = 'none';
     }
 
-    // List backups
+    // Charger la liste des backups et activer le bouton
     async function loadBackupList() {
+      restoreFromStorageBtn.disabled = true;
       try {
         const listRef = storageRef(storage, 'backups/');
         const res = await listAll(listRef);
@@ -140,17 +140,24 @@
           opt.textContent = itemRef.name;
           backupList.append(opt);
         });
-        if(!res.items.length) backupList.innerHTML = '<option>Aucun backup</option>';
-      } catch(e) {
+        if (!res.items.length) {
+          backupList.innerHTML = '<option>Aucun backup</option>';
+          restoreFromStorageBtn.disabled = true;
+        } else {
+          restoreFromStorageBtn.disabled = false;
+        }
+      } catch (e) {
         console.error('Erreur loadBackupList:', e);
         backupList.innerHTML = '<option>Erreur de chargement</option>';
+        restoreFromStorageBtn.disabled = true;
       }
     }
 
-    // Backup to Storage
+    // Sauvegarde JSON vers Storage
     async function backupToStorage() {
       try {
-        const arr = []; const snap = await getDocs(collection(db,'inventaire'));
+        const arr = [];
+        const snap = await getDocs(collection(db,'inventaire'));
         snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
         console.log('Données à backup :', arr);
         const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
@@ -165,29 +172,66 @@
       }
     }
 
-    // Restore from Storage
+    // Restauration depuis Storage
     async function restoreFromStorage() {
       const fileName = backupList.value;
-      if (!fileName || fileName === 'Aucun backup') return alert('Choisissez un backup valide.');
+      if (!fileName || fileName === 'Chargement...' || fileName === 'Aucun backup') {
+        return alert('Aucun backup valide sélectionné.');
+      }
       try {
         const fileUrl = await getDownloadURL(storageRef(storage, `backups/${fileName}`));
         console.log('URL du backup :', fileUrl);
         const data = await (await fetch(fileUrl)).json();
-        console.log('Restauration effectuée, nombre d\'entrées:', data.length);
-        for(const item of data) {
+        console.log("Restauration effectuée, nombre d'entrées:", data.length);
+        for (const item of data) {
           const { id, ...fields } = item;
           await setDoc(doc(db,'inventaire',id), fields);
         }
         alert('Restauration terminée');
         renderTable();
-      } catch(err) {
+      } catch (err) {
         console.error('Erreur restoreFromStorage:', err);
         alert('Erreur lors de la restauration : ' + err.message);
       }
     }
 
-    // Autres fonctions (addEntry, saveEdit, deleteEntry, collectFormData, renderTable, exportToExcel, exportToPDF)
-    // ...
+    // Export CSV/Excel
+    async function exportToExcel() {
+      try {
+        const snap = await getDocs(collection(db, 'inventaire'));
+        let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
+        snap.forEach(d => {
+          const v = d.data();
+          csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},"${v.observations}",${v.photoURL}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'inventaire.csv';
+        a.click();
+      } catch (err) {
+        console.error('Erreur exportToExcel:', err);
+        alert('Erreur lors de l\'export Excel : ' + err.message);
+      }
+    }
+
+    // Export PDF (existant)
+    async function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(14);
+      doc.text('Inventaire Technique', 10, 10);
+      const snap = await getDocs(collection(db,'inventaire'));
+      const rows = snap.docs.map(i => {
+        const v = i.data();
+        return [v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations||'', v.photoURL];
+      });
+      doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
+      doc.save('inventaire.pdf');
+    }
+
+    // Plomberie des autres fonctions (à conserver) : addEntry, saveEdit, deleteEntry, collectFormData, renderTable
+    // …
 
     // Événements
     actionBtn.addEventListener('click', () => editingId ? saveEdit() : addEntry());
