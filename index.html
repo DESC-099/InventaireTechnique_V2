@@ -1,6 +1,6 @@
 <!--
   Inventaire Technique
-  Développé par : Invento & Nicolas.D
+  Développé par : Invento & Nicolas
 -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -79,8 +79,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <script type="module">
-// Développé par : Invento & Nicolas.D
-// Version : 2.4 – 06/05/2025
+// Développé par : Invento & Nicolas
+// Version : 1.0 – 06/05/2025
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
@@ -89,7 +89,7 @@
       apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
       authDomain: "inventairetechnique.firebaseapp.com",
       projectId: "inventairetechnique",
-      storageBucket: "inventairetechnique.firebasestorage.app",
+      storageBucket: "inventairetechnique.appspot.com",
       messagingSenderId: "783866462106",
       appId: "1:783866462106:web:7bc5eca39df86773efc423"
     };
@@ -97,18 +97,15 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-    // DOM
+    // DOM elements
     const form = document.getElementById("entryForm");
     const actionBtn = document.getElementById("actionBtn");
     const cancelBtn = document.getElementById("cancelBtn");
-
     const backupBtn = document.getElementById("backupBtn");
     const excelBtn = document.getElementById("excelBtn");
     const pdfBtn = document.getElementById("pdfBtn");
-
     const backupList = document.getElementById('backupList');
     const restoreFromStorageBtn = document.getElementById('restoreFromStorageBtn');
-
     const tbody = document.querySelector("#dataTable tbody");
     const photoPreview = document.getElementById("currentPhotoPreview");
     const filterBuilding = document.getElementById("filterBuilding");
@@ -119,7 +116,7 @@
     let editingId = null;
     let currentPhotoURL = "";
 
-    // Listage des JSON stockés
+    // Load backups from Storage
     async function loadBackupList() {
       const listRef = storageRef(storage, 'backups/');
       const res = await listAll(listRef);
@@ -132,7 +129,7 @@
       if (res.items.length === 0) backupList.innerHTML = '<option>Aucun backup</option>';
     }
 
-    // Sauvegarde JSON vers Firebase Storage
+    // Backup inventory to Firebase Storage
     async function backupToStorage() {
       try {
         const arr = [];
@@ -150,7 +147,7 @@
       }
     }
 
-    // Restauration depuis Firebase Storage
+    // Restore inventory from selected backup
     async function restoreFromStorage() {
       const fileName = backupList.value;
       if (!fileName || fileName === 'Aucun backup') return alert('Choisissez un backup valide.');
@@ -164,3 +161,27 @@
         }
         alert('Restauration depuis Storage terminée.');
         renderTable();
+      } catch (err) {
+        console.error('Erreur restoreFromStorage:', err);
+        alert('Erreur lors de la restauration depuis Storage : ' + err.message);
+      }
+    }
+
+    // Event listeners
+    actionBtn.addEventListener("click", () => editingId ? saveEdit() : addEntry());
+    cancelBtn.addEventListener("click", resetForm);
+    backupBtn.addEventListener('click', backupToStorage);
+    restoreFromStorageBtn.addEventListener('click', restoreFromStorage);
+    excelBtn.addEventListener("click", exportToExcel);
+    pdfBtn.addEventListener("click", exportToPDF);
+    [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener("input", renderTable));
+    clearFiltersBtn.addEventListener("click", () => { filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable(); });
+
+    // Initialize
+    renderTable();
+    loadBackupList();
+
+    // Existing functions: addEntry, saveEdit, deleteEntry, collectFormData, renderTable, exportToExcel, exportToPDF
+  </script>
+</body>
+</html>
