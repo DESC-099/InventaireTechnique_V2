@@ -18,7 +18,7 @@
     #filters label { width: auto; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
-    img { max-width: 100px; max-height: 100px; display: block; }
+    img { display: block; }
     #currentPhotoPreview { margin-left: 125px; display: none; }
     .logo { max-width: 150px; height: auto; float: right; margin-left: 20px; margin-bottom: 20px; }
     #backupList { margin-left: 5px; }
@@ -27,9 +27,11 @@
 <body>
   <!-- Logo -->
   <header>
-    <img src="./images/logo.png" alt="Logo Inventaire Technique" class="logo">
+    <!-- Assurez-vous que le dossier images contient bien logo.png -->
+    <img src="images/logo.png" alt="Logo Inventaire Technique" class="logo">
   </header>
   <h2>Inventaire Technique</h2>
+
   <form id="entryForm">
     <label for="building">Bâtiment :</label>
     <input id="building" required><br>
@@ -79,17 +81,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <script type="module">
-// Développé par : Invento & Nicolas
-// Version : 1.0 – 06/05/2025
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
+    // Configuration Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
       authDomain: "inventairetechnique.firebaseapp.com",
       projectId: "inventairetechnique",
-      // Attention : utilisez le bucket '.appspot.com' tel que défini dans la console Firebase Storage
       storageBucket: "inventairetechnique.appspot.com",
       messagingSenderId: "783866462106",
       appId: "1:783866462106:web:7bc5eca39df86773efc423"
@@ -98,7 +98,7 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-    // DOM elements
+    // Éléments DOM
     const form = document.getElementById("entryForm");
     const actionBtn = document.getElementById("actionBtn");
     const cancelBtn = document.getElementById("cancelBtn");
@@ -117,25 +117,42 @@
     let editingId = null;
     let currentPhotoURL = "";
 
-    // Load backups from Storage
-    async function loadBackupList() {
-      const listRef = storageRef(storage, 'backups/');
-      const res = await listAll(listRef);
-      backupList.innerHTML = '';
-      res.items.forEach(itemRef => {
-        const name = itemRef.name;
-        const opt = document.createElement('option'); opt.value = name; opt.textContent = name;
-        backupList.append(opt);
-      });
-      if (res.items.length === 0) backupList.innerHTML = '<option>Aucun backup</option>';
+    // Réinitialisation du formulaire
+    function resetForm() {
+      form.reset();
+      editingId = null;
+      currentPhotoURL = '';
+      photoPreview.removeAttribute('src');
+      photoPreview.style.display = 'none';
+      actionBtn.textContent = 'Ajouter';
+      cancelBtn.style.display = 'none';
     }
 
-    // Backup inventory to Firebase Storage
+    // List backups
+    async function loadBackupList() {
+      try {
+        const listRef = storageRef(storage, 'backups/');
+        const res = await listAll(listRef);
+        backupList.innerHTML = '';
+        res.items.forEach(itemRef => {
+          const opt = document.createElement('option');
+          opt.value = itemRef.name;
+          opt.textContent = itemRef.name;
+          backupList.append(opt);
+        });
+        if(!res.items.length) backupList.innerHTML = '<option>Aucun backup</option>';
+      } catch(e) {
+        console.error('Erreur loadBackupList:', e);
+        backupList.innerHTML = '<option>Erreur de chargement</option>';
+      }
+    }
+
+    // Backup to Storage
     async function backupToStorage() {
       try {
-        const arr = [];
-        const snap = await getDocs(collection(db,'inventaire'));
+        const arr = []; const snap = await getDocs(collection(db,'inventaire'));
         snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+        console.log('Données à backup :', arr);
         const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
         const fileName = `backup_${new Date().toISOString()}.json`;
         const fileRef = storageRef(storage, `backups/${fileName}`);
@@ -148,41 +165,43 @@
       }
     }
 
-    // Restore inventory from selected backup
+    // Restore from Storage
     async function restoreFromStorage() {
       const fileName = backupList.value;
       if (!fileName || fileName === 'Aucun backup') return alert('Choisissez un backup valide.');
       try {
-        const fileURL = await getDownloadURL(storageRef(storage, `backups/${fileName}`));
-        const resp = await fetch(fileURL);
-        const data = await resp.json();
-        for (const item of data) {
+        const fileUrl = await getDownloadURL(storageRef(storage, `backups/${fileName}`));
+        console.log('URL du backup :', fileUrl);
+        const data = await (await fetch(fileUrl)).json();
+        console.log('Restauration effectuée, nombre d\'entrées:', data.length);
+        for(const item of data) {
           const { id, ...fields } = item;
-          await setDoc(doc(db, 'inventaire', id), fields);
+          await setDoc(doc(db,'inventaire',id), fields);
         }
-        alert('Restauration depuis Storage terminée.');
+        alert('Restauration terminée');
         renderTable();
-      } catch (err) {
+      } catch(err) {
         console.error('Erreur restoreFromStorage:', err);
-        alert('Erreur lors de la restauration depuis Storage : ' + err.message);
+        alert('Erreur lors de la restauration : ' + err.message);
       }
     }
 
-    // Event listeners
-    actionBtn.addEventListener("click", () => editingId ? saveEdit() : addEntry());
-    cancelBtn.addEventListener("click", resetForm);
+    // Autres fonctions (addEntry, saveEdit, deleteEntry, collectFormData, renderTable, exportToExcel, exportToPDF)
+    // ...
+
+    // Événements
+    actionBtn.addEventListener('click', () => editingId ? saveEdit() : addEntry());
+    cancelBtn.addEventListener('click', resetForm);
     backupBtn.addEventListener('click', backupToStorage);
     restoreFromStorageBtn.addEventListener('click', restoreFromStorage);
-    excelBtn.addEventListener("click", exportToExcel);
-    pdfBtn.addEventListener("click", exportToPDF);
-    [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener("input", renderTable));
-    clearFiltersBtn.addEventListener("click", () => { filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable(); });
+    excelBtn.addEventListener('click', exportToExcel);
+    pdfBtn.addEventListener('click', exportToPDF);
+    [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener('input', renderTable));
+    clearFiltersBtn.addEventListener('click', () => { filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable(); });
 
-    // Initialize
+    // Initialisation
     renderTable();
     loadBackupList();
-
-    // Existing functions: addEntry, saveEdit, deleteEntry, collectFormData, renderTable, exportToExcel, exportToPDF
   </script>
 </body>
 </html>
