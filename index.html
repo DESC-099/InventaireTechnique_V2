@@ -34,7 +34,7 @@
 <body>
   <!-- Logo -->
   <header>
-    <img src="images/logo.png" alt="Logo Inventaire Technique" class="logo">
+    <img src="./images/logo.png" alt="Logo Inventaire Technique" class="logo">
   </header>
   <h2>Inventaire Technique</h2>
   <form id="entryForm">
@@ -133,10 +133,67 @@
     pdfBtn.addEventListener("click", exportToPDF);
     [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener("input", renderTable));
     clearFiltersBtn.addEventListener("click", () => {
-      filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable();
+      filterBuilding.value = filterAgent.value = filterLocation.value = '';
+      renderTable();
     });
 
     async function addEntry() {
       const entry = await collectFormData(); if (!entry) return;
-      await addDoc(collection(db,"inventaire"), { ...entry, timestamp: serverTimestamp() }); resetForm(); renderTable();
+      await addDoc(collection(db, "inventaire"), { ...entry, timestamp: serverTimestamp() });
+      resetForm(); renderTable();
     }
+
+    async function backupJSON() {
+      try {
+        const arr = [];
+        const snap = await getDocs(collection(db,'inventaire'));
+        snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `inventaire_backup_${new Date().toISOString()}.json`;
+        a.click();
+      } catch (error) {
+        console.error('Erreur backupJSON:', error);
+        alert('Erreur lors de la sauvegarde JSON : ' + error.message);
+      }
+    }
+
+    async function exportToExcel() {
+      let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
+      try {
+        const snap = await getDocs(collection(db,'inventaire'));
+        snap.forEach(d => { const v = d.data();
+          csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'inventaire.csv'; a.click();
+      } catch (error) {
+        console.error('Erreur exportToExcel:', error);
+        alert('Erreur lors de l'export Excel : ' + error.message);
+      }
+    }
+
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF(); doc.setFontSize(14);
+      doc.text('Inventaire Technique', 10, 10);
+      getDocs(collection(db,'inventaire')).then(snap => {
+        const rows = [];
+        snap.forEach(i => { const v = i.data();
+          rows.push([v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations||'', v.photoURL]);
+        });
+        doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
+        doc.save('inventaire.pdf');
+      }).catch(error => {
+        console.error('Erreur exportToPDF:', error);
+        alert('Erreur lors de l'export PDF : ' + error.message);
+      });
+    }
+
+    // initialisation
+    renderTable();
+  </script>
+</body>
+</html>
