@@ -1,3 +1,4 @@
+
 <!--
   Inventaire Technique
   Développé par : Invento & Nicolas
@@ -73,8 +74,9 @@
     <button type="button" id="excelBtn">Export Excel</button>
     <button type="button" id="pdfBtn">Export PDF</button>
     <label for="backupList">Backups Stockés :</label>
-    <select id="backupList"><option>Chargement...</option></select>
-    <button type="button" id="restoreFromStorageBtn">Restaurer depuis Storage</button>
+    <!-- Au départ, désactivés tant que la liste n’est pas chargée -->
+    <select id="backupList" disabled></select>
+    <button id="restoreFromStorageBtn" disabled>Restaurer</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -83,6 +85,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
+    import { /* … */, getDocs, collection } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // Configuration Firebase
     const firebaseConfig = {
@@ -129,29 +132,24 @@
 
     // Charger la liste des backups et activer le bouton
     async function loadBackupList() {
-      restoreFromStorageBtn.disabled = true;
-      try {
-        const listRef = storageRef(storage, 'backups/');
-        const res = await listAll(listRef);
-        backupList.innerHTML = '';
-        res.items.forEach(itemRef => {
-          const opt = document.createElement('option');
-          opt.value = itemRef.name;
-          opt.textContent = itemRef.name;
-          backupList.append(opt);
-        });
-        if (!res.items.length) {
-          backupList.innerHTML = '<option>Aucun backup</option>';
-          restoreFromStorageBtn.disabled = true;
-        } else {
-          restoreFromStorageBtn.disabled = false;
-        }
-      } catch (e) {
-        console.error('Erreur loadBackupList:', e);
-        backupList.innerHTML = '<option>Erreur de chargement</option>';
-        restoreFromStorageBtn.disabled = true;
-      }
-    }
+  restoreFromStorageBtn.disabled = true;
+  try {
+    const res = await listAll(storageRef(storage, 'backups/'));
+    backupList.innerHTML = '';
+    res.items.forEach(itemRef => {
+      const opt = document.createElement('option');
+      opt.value = itemRef.name;
+      opt.textContent = itemRef.name;
+      backupList.append(opt);
+    });
+    // si on a au moins un backup, on active le bouton Restaurer
+    restoreFromStorageBtn.disabled = res.items.length === 0;
+  } catch (e) {
+    console.error('Erreur loadBackupList:', e);
+    backupList.innerHTML = '<option>Erreur</option>';
+    restoreFromStorageBtn.disabled = true;
+  }
+ }
 
     // Sauvegarde JSON vers Storage
     async function backupToStorage() {
@@ -175,8 +173,8 @@
     // Restauration depuis Storage
     async function restoreFromStorage() {
       const fileName = backupList.value;
-      if (!fileName || fileName === 'Chargement...' || fileName === 'Aucun backup') {
-        return alert('Aucun backup valide sélectionné.');
+      if (!fileName) {
+         return alert('Aucun backup valide sélectionné.');
       }
       try {
         const fileUrl = await getDownloadURL(storageRef(storage, `backups/${fileName}`));
@@ -195,26 +193,6 @@
       }
     }
 
-    // Export CSV/Excel
-    async function exportToExcel() {
-      try {
-        const snap = await getDocs(collection(db, 'inventaire'));
-        let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
-        snap.forEach(d => {
-          const v = d.data();
-          csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},"${v.observations}",${v.photoURL}\n`;
-        });
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'inventaire.csv';
-        a.click();
-      } catch (err) {
-        console.error('Erreur exportToExcel:', err);
-        alert('Erreur lors de l\'export Excel : ' + err.message);
-      }
-    }
-
     // Export PDF (existant)
     async function exportToPDF() {
       const { jsPDF } = window.jspdf;
@@ -229,6 +207,26 @@
       doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
       doc.save('inventaire.pdf');
     }
+
+    // Export CSV/Excel
+    async function exportToExcel() {
+  try {
+    const snap = await getDocs(collection(db, 'inventaire'));
+    let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
+    snap.forEach(d => {
+      const v = d.data();
+      csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},"${v.observations}",${v.photoURL}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'inventaire.csv';
+    a.click();
+  } catch (err) {
+    console.error('Erreur exportToExcel:', err);
+    alert('Erreur lors de l\'export Excel : ' + err.message);
+  }
+}
 
     // Plomberie des autres fonctions (à conserver) : addEntry, saveEdit, deleteEntry, collectFormData, renderTable
     // …
