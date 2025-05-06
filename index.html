@@ -66,6 +66,7 @@
     <button type="button" id="clearFiltersBtn">Effacer filtres</button>
   </div>
 
+  <!-- Table des données -->
   <table id="dataTable">
     <thead>
       <tr>
@@ -82,9 +83,15 @@
     <tbody></tbody>
   </table>
 
-  <button type="button" id="backupBtn">Sauvegarde JSON</button>
-  <button type="button" id="excelBtn">Export Excel</button>
-  <button type="button" id="pdfBtn">Export PDF</button>
+  <!-- Boutons d'exports et backup/restauration -->
+  <div style="margin-top:20px;">
+    <button type="button" id="backupBtn">Sauvegarde JSON</button>
+    <button type="button" id="excelBtn">Export Excel</button>
+    <button type="button" id="pdfBtn">Export PDF</button>
+    <!-- Restaurer depuis JSON -->
+    <input type="file" id="restoreFile" accept=".json">
+    <button type="button" id="restoreBtn">Restaurer JSON</button>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
@@ -94,7 +101,7 @@
 // Version : 1.0 – 06/05/2025
 // ────────────────────────────────────────────────────────────────────────────
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
     const firebaseConfig = {
@@ -116,6 +123,8 @@
     const backupBtn = document.getElementById("backupBtn");
     const excelBtn = document.getElementById("excelBtn");
     const pdfBtn = document.getElementById("pdfBtn");
+    const restoreFile = document.getElementById('restoreFile');
+    const restoreBtn = document.getElementById('restoreBtn');
     const tbody = document.querySelector("#dataTable tbody");
     const photoPreview = document.getElementById("currentPhotoPreview");
     const filterBuilding = document.getElementById("filterBuilding");
@@ -131,6 +140,7 @@
     backupBtn.addEventListener("click", backupJSON);
     excelBtn.addEventListener("click", exportToExcel);
     pdfBtn.addEventListener("click", exportToPDF);
+    restoreBtn.addEventListener('click', restoreFromJSON);
     [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener("input", renderTable));
     clearFiltersBtn.addEventListener("click", () => {
       filterBuilding.value = filterAgent.value = filterLocation.value = '';
@@ -149,51 +159,66 @@
         const snap = await getDocs(collection(db,'inventaire'));
         snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
         const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `inventaire_backup_${new Date().toISOString()}.json`;
-        a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `inventaire_backup_${new Date().toISOString()}.json`; a.click();
       } catch (error) {
         console.error('Erreur backupJSON:', error);
         alert('Erreur lors de la sauvegarde JSON : ' + error.message);
       }
     }
 
-    async function exportToExcel() {
-      let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
+    async function restoreFromJSON() {
+      if (!restoreFile.files.length) return alert('Veuillez choisir un fichier JSON de backup.');
       try {
-        const snap = await getDocs(collection(db,'inventaire'));
+        const text = await restoreFile.files[0].text();
+        const data = JSON.parse(text);
+        for (const item of data) {
+          const { id, ...fields } = item;
+          await setDoc(doc(db, 'inventaire', id), fields);
+        }
+        alert('Restauration terminée !');
+        renderTable();
+      } catch (err) {
+        console.error('Erreur restauration:', err);
+        alert('Erreur lors de la restauration : ' + err.message);
+      }
+    }
+
+    function exportToExcel() {
+      let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
+      getDocs(collection(db,'inventaire')).then(snap => {
         snap.forEach(d => { const v = d.data();
           csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`;
         });
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'inventaire.csv'; a.click();
-      } catch (error) {
+      }).catch(error => {
         console.error('Erreur exportToExcel:', error);
-        alert('Erreur lors de l'export Excel : ' + error.message);
-      }
+        alert('Erreur lors de l\'export Excel : ' + error.message);
+      });
     }
 
     function exportToPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF(); doc.setFontSize(14);
-      doc.text('Inventaire Technique', 10, 10);
+      const { jsPDF } = window.jspdf; const doc = new jsPDF();
+      doc.setFontSize(14); doc.text('Inventaire Technique', 10, 10);
       getDocs(collection(db,'inventaire')).then(snap => {
-        const rows = [];
-        snap.forEach(i => { const v = i.data();
-          rows.push([v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations||'', v.photoURL]);
+        const rows = snap.docs.map(i => {
+          const v = i.data();
+          return [v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations||'', v.photoURL];
         });
         doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
         doc.save('inventaire.pdf');
       }).catch(error => {
         console.error('Erreur exportToPDF:', error);
-        alert('Erreur lors de l'export PDF : ' + error.message);
+        alert('Erreur lors de l\'export PDF : ' + error.message);
       });
     }
 
     // initialisation
     renderTable();
+
+    // Fonctions existantes (renderTable, collectFormData, saveEdit, deleteEntry, resetForm)...
   </script>
 </body>
 </html>
