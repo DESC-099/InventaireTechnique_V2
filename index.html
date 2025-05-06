@@ -22,7 +22,13 @@
     img { max-width: 100px; max-height: 100px; display: block; }
     #currentPhotoPreview { margin-left: 125px; display: none; }
     /* Logo */
-    .logo { max-width: 150px; height: auto; display: block; margin-bottom: 20px; }
+    .logo {
+      max-width: 150px;
+      height: auto;
+      float: right;
+      margin-left: 20px;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
@@ -127,19 +133,10 @@
     pdfBtn.addEventListener("click", exportToPDF);
     [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener("input", renderTable));
     clearFiltersBtn.addEventListener("click", () => {
-      filterBuilding.value = filterAgent.value = filterLocation.value = '';
-      renderTable();
+      filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable();
     });
 
     async function addEntry() {
       const entry = await collectFormData(); if (!entry) return;
-      await addDoc(collection(db, "inventaire"), { ...entry, timestamp: serverTimestamp() });
-      resetForm(); renderTable();
+      await addDoc(collection(db,"inventaire"), { ...entry, timestamp: serverTimestamp() }); resetForm(); renderTable();
     }
-
-    function startEdit(id, data) {
-      editingId = id;
-      ['building','location','title','quantity','agent','observations'].forEach(key => {
-        document.getElementById(key).value = data[key] || '';
-      });
-      currentPhotoURL = data.photoURL || '';
