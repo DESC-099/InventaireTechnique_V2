@@ -1,3 +1,7 @@
+<!--
+  Inventaire Technique
+  Développé par : Invento & Nicolas
+-->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -22,21 +26,21 @@
 <body>
   <h2>Inventaire Technique</h2>
   <form id="entryForm">
-    <label for="building">Bâtiment :</label>
+    <label for="building">Bâtiment :</label>
     <input id="building" required><br>
-    <label for="location">Localisation :</label>
+    <label for="location">Localisation :</label>
     <input id="location" required><br>
-    <label for="title">Intitulé :</label>
+    <label for="title">Intitulé :</label>
     <input id="title" required><br>
-    <label for="quantity">Nombre :</label>
+    <label for="quantity">Nombre :</label>
     <input id="quantity" type="number" min="1" value="1" required><br>
-    <label for="agent">Agent :</label>
+    <label for="agent">Agent :</label>
     <input id="agent" maxlength="5" placeholder="ex: JD" required><br>
-    <label for="observations">Observations :</label>
+    <label for="observations">Observations :</label>
     <textarea id="observations" maxlength="1000" rows="4" placeholder="max 1000 caractères"></textarea><br>
-    <label>Photo actuelle :</label>
+    <label>Photo actuelle :</label>
     <img id="currentPhotoPreview" alt="Aperçu photo"><br>
-    <label for="photo">Nouvelle photo :</label>
+    <label for="photo">Nouvelle photo :</label>
     <input id="photo" type="file" accept="image/*"><br>
     <button type="button" id="actionBtn">Ajouter</button>
     <button type="button" id="cancelBtn" style="display:none;">Annuler</button>
@@ -44,9 +48,9 @@
 
   <!-- Filtres -->
   <div id="filters">
-    <label for="filterBuilding">Filtrer Bâtiment : <input id="filterBuilding" placeholder="Tous"></label>
-    <label for="filterAgent">Filtrer Agent : <input id="filterAgent" placeholder="Tous"></label>
-    <label for="filterLocation">Filtrer Localisation : <input id="filterLocation" placeholder="Tous"></label>
+    <label for="filterBuilding">Filtrer Bâtiment : <input id="filterBuilding" placeholder="Tous"></label>
+    <label for="filterAgent">Filtrer Agent : <input id="filterAgent" placeholder="Tous"></label>
+    <label for="filterLocation">Filtrer Localisation : <input id="filterLocation" placeholder="Tous"></label>
     <button type="button" id="clearFiltersBtn">Effacer filtres</button>
   </div>
 
@@ -73,6 +77,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <script type="module">
+// ────────────────────────────────────────────────────────────────────────────
+// Développé par : Invento & Nicolas
+// Version : 2.3 – 06/05/2025
+// ────────────────────────────────────────────────────────────────────────────
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
@@ -147,7 +155,7 @@
     }
 
     async function deleteEntry(id) {
-      if (!confirm('Supprimer cet enregistrement ?')) return;
+      if (!confirm('Supprimer cet enregistrement ?')) return;
       await deleteDoc(doc(db, 'inventaire', id));
       renderTable();
     }
@@ -160,11 +168,11 @@
       const agent = document.getElementById('agent').value.trim();
       const observations = document.getElementById('observations').value.trim();
       if (!building||!location||!title||quantity<1||!agent) { alert('Champs obligatoires'); return null; }
-      if (observations.length>1000) { alert('Observations max 1000 caractères'); return null; }
+      if (observations.length>1000) { alert('Observations max 1000 caractères'); return null; }
       let photoURL = currentPhotoURL;
       const fileInput = document.getElementById('photo');
       if (fileInput.files.length) {
-        const file = fileInput.files[0]; if(file.size>5*1024*1024) { alert('Photo < 5 Mo'); return null; }
+        const file = fileInput.files[0]; if(file.size>5*1024*1024) { alert('Photo < 5 Mo'); return null; }
         const ref = storageRef(storage, `photos/${Date.now()}_${file.name}`);
         await uploadBytes(ref, file);
         photoURL = await getDownloadURL(ref);
