@@ -21,26 +21,32 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     img { max-width: 100px; max-height: 100px; display: block; }
     #currentPhotoPreview { margin-left: 125px; display: none; }
+    /* Logo */
+    .logo { max-width: 150px; height: auto; display: block; margin-bottom: 20px; }
   </style>
 </head>
 <body>
+  <!-- Logo -->
+  <header>
+    <img src="images/logo.png" alt="Logo Inventaire Technique" class="logo">
+  </header>
   <h2>Inventaire Technique</h2>
   <form id="entryForm">
-    <label for="building">Bâtiment :</label>
+    <label for="building">Bâtiment :</label>
     <input id="building" required><br>
-    <label for="location">Localisation :</label>
+    <label for="location">Localisation :</label>
     <input id="location" required><br>
-    <label for="title">Intitulé :</label>
+    <label for="title">Intitulé :</label>
     <input id="title" required><br>
-    <label for="quantity">Nombre :</label>
+    <label for="quantity">Nombre :</label>
     <input id="quantity" type="number" min="1" value="1" required><br>
-    <label for="agent">Agent :</label>
+    <label for="agent">Agent :</label>
     <input id="agent" maxlength="5" placeholder="ex: JD" required><br>
-    <label for="observations">Observations :</label>
+    <label for="observations">Observations :</label>
     <textarea id="observations" maxlength="1000" rows="4" placeholder="max 1000 caractères"></textarea><br>
-    <label>Photo actuelle :</label>
+    <label>Photo actuelle :</label>
     <img id="currentPhotoPreview" alt="Aperçu photo"><br>
-    <label for="photo">Nouvelle photo :</label>
+    <label for="photo">Nouvelle photo :</label>
     <input id="photo" type="file" accept="image/*"><br>
     <button type="button" id="actionBtn">Ajouter</button>
     <button type="button" id="cancelBtn" style="display:none;">Annuler</button>
@@ -48,9 +54,9 @@
 
   <!-- Filtres -->
   <div id="filters">
-    <label for="filterBuilding">Filtrer Bâtiment : <input id="filterBuilding" placeholder="Tous"></label>
-    <label for="filterAgent">Filtrer Agent : <input id="filterAgent" placeholder="Tous"></label>
-    <label for="filterLocation">Filtrer Localisation : <input id="filterLocation" placeholder="Tous"></label>
+    <label for="filterBuilding">Filtrer Bâtiment : <input id="filterBuilding" placeholder="Tous"></label>
+    <label for="filterAgent">Filtrer Agent : <input id="filterAgent" placeholder="Tous"></label>
+    <label for="filterLocation">Filtrer Localisation : <input id="filterLocation" placeholder="Tous"></label>
     <button type="button" id="clearFiltersBtn">Effacer filtres</button>
   </div>
 
@@ -79,7 +85,7 @@
   <script type="module">
 // ────────────────────────────────────────────────────────────────────────────
 // Développé par : Invento & Nicolas
-// Version : 2.3 – 06/05/2025
+// Version : 1.0 – 06/05/2025
 // ────────────────────────────────────────────────────────────────────────────
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
@@ -137,116 +143,3 @@
         document.getElementById(key).value = data[key] || '';
       });
       currentPhotoURL = data.photoURL || '';
-      if (currentPhotoURL) {
-        photoPreview.src = currentPhotoURL;
-        photoPreview.style.display = 'block';
-      } else {
-        photoPreview.removeAttribute('src');
-        photoPreview.style.display = 'none';
-      }
-      actionBtn.textContent = 'Enregistrer';
-      cancelBtn.style.display = 'inline';
-    }
-
-    async function saveEdit() {
-      const entry = await collectFormData(); if (!entry) return;
-      await updateDoc(doc(db, 'inventaire', editingId), entry);
-      resetForm(); renderTable();
-    }
-
-    async function deleteEntry(id) {
-      if (!confirm('Supprimer cet enregistrement ?')) return;
-      await deleteDoc(doc(db, 'inventaire', id));
-      renderTable();
-    }
-
-    async function collectFormData() {
-      const building = document.getElementById('building').value.trim();
-      const location = document.getElementById('location').value.trim();
-      const title = document.getElementById('title').value.trim();
-      const quantity = Number(document.getElementById('quantity').value);
-      const agent = document.getElementById('agent').value.trim();
-      const observations = document.getElementById('observations').value.trim();
-      if (!building||!location||!title||quantity<1||!agent) { alert('Champs obligatoires'); return null; }
-      if (observations.length>1000) { alert('Observations max 1000 caractères'); return null; }
-      let photoURL = currentPhotoURL;
-      const fileInput = document.getElementById('photo');
-      if (fileInput.files.length) {
-        const file = fileInput.files[0]; if(file.size>5*1024*1024) { alert('Photo < 5 Mo'); return null; }
-        const ref = storageRef(storage, `photos/${Date.now()}_${file.name}`);
-        await uploadBytes(ref, file);
-        photoURL = await getDownloadURL(ref);
-      }
-      return { building, location, title, quantity, agent, observations, photoURL };
-    }
-
-    function resetForm() {
-      form.reset(); editingId=null; currentPhotoURL='';
-      photoPreview.removeAttribute('src'); photoPreview.style.display='none';
-      actionBtn.textContent='Ajouter'; cancelBtn.style.display='none';
-    }
-
-    async function renderTable() {
-      tbody.innerHTML = '';
-      const snap = await getDocs(query(collection(db, 'inventaire'), orderBy('timestamp','desc')));
-      const fb = filterBuilding.value.trim().toLowerCase();
-      const fa = filterAgent.value.trim().toLowerCase();
-      const fl = filterLocation.value.trim().toLowerCase();
-      snap.forEach(item => {
-        const d = item.data();
-        // filtrage
-        if (fb && !d.building.toLowerCase().includes(fb)) return;
-        if (fa && !d.agent.toLowerCase().includes(fa)) return;
-        if (fl && !d.location.toLowerCase().includes(fl)) return;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${d.building}</td>
-          <td>${d.location}</td>
-          <td>${d.title}</td>
-          <td>${d.quantity}</td>
-          <td>${d.agent}</td>
-          <td>${d.observations||''}</td>
-          <td>${d.photoURL?`<img src="${d.photoURL}">`:''}</td>
-        `;
-        const tdAct = document.createElement('td');
-        const btnMod = document.createElement('button'); btnMod.type='button'; btnMod.textContent='Modifier';
-        btnMod.addEventListener('click', () => startEdit(item.id, d));
-        const btnDel = document.createElement('button'); btnDel.type='button'; btnDel.textContent='Supprimer';
-        btnDel.addEventListener('click', () => deleteEntry(item.id));
-        tdAct.append(btnMod, btnDel);
-        tr.appendChild(tdAct);
-        tbody.appendChild(tr);
-      });
-    }
-
-    async function backupJSON() {
-      const arr = [];
-      (await getDocs(collection(db,'inventaire'))).forEach(d => arr.push({id:d.id,...d.data()}));
-      const blob = new Blob([JSON.stringify(arr,null,2)],{type:'application/json'});
-      const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
-      a.download=`inventaire_backup_${new Date().toISOString()}.json`; a.click();
-    }
-
-    async function exportToExcel() {
-      let csv='\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
-      (await getDocs(collection(db,'inventaire'))).forEach(d=>{const v=d.data();csv+=`${v.building},${v.location},${v.title},${v.quantity},${v.agent},${v.observations},${v.photoURL}\n`;});
-      const blob=new Blob([csv],{type:'text/csv'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-      a.download='inventaire.csv'; a.click();
-    }
-
-    function exportToPDF() {
-      const { jsPDF } = window.jspdf; const doc = new jsPDF(); doc.setFontSize(14); doc.text('Inventaire Technique',10,10);
-      getDocs(collection(db,'inventaire')).then(snap=>{
-        const rows=[];
-        snap.forEach(i=>{const v=i.data();rows.push([v.building,v.location,v.title,v.quantity.toString(),v.agent,v.observations||'',v.photoURL]);});
-        doc.autoTable({head:[['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']],body:rows,startY:20});
-        doc.save('inventaire.pdf');
-      });
-    }
-
-    // initialisation
-    renderTable();
-  </script>
-</body>
-</html>
