@@ -1,4 +1,3 @@
-
 <!--
   Inventaire Technique
   Développé par : Invento & Nicolas
@@ -66,17 +65,17 @@
         <th>Bâtiment</th><th>Localisation</th><th>Intitulé</th><th>Nombre</th><th>Agent</th>
         <th>Observations</th><th>Photo</th><th>Actions</th>
       </tr>
-    </thead><tbody></tbody>
+    </thead>
+    <tbody></tbody>
   </table>
 
   <div style="margin-top:20px;">
     <button type="button" id="backupBtn">Sauvegarde JSON &uarr; Storage</button>
-    <button type="button" id="excelBtn">Export Excel</button>
+    <!-- Export Excel retiré -->
     <button type="button" id="pdfBtn">Export PDF</button>
     <label for="backupList">Backups Stockés :</label>
-    <!-- Au départ, désactivés tant que la liste n’est pas chargée -->
     <select id="backupList" disabled></select>
-    <button id="restoreFromStorageBtn" disabled>Restaurer</button>
+    <button type="button" id="restoreFromStorageBtn" disabled>Restaurer depuis Storage</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -85,7 +84,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
-    import { /* … */, getDocs, collection } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // Configuration Firebase
     const firebaseConfig = {
@@ -105,10 +103,9 @@
     const actionBtn = document.getElementById("actionBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const backupBtn = document.getElementById("backupBtn");
-    const excelBtn = document.getElementById("excelBtn");
     const pdfBtn = document.getElementById("pdfBtn");
-    const backupList = document.getElementById('backupList');
-    const restoreFromStorageBtn = document.getElementById('restoreFromStorageBtn');
+    const backupList = document.getElementById("backupList");
+    const restoreFromStorageBtn = document.getElementById("restoreFromStorageBtn");
     const tbody = document.querySelector("#dataTable tbody");
     const photoPreview = document.getElementById("currentPhotoPreview");
     const filterBuilding = document.getElementById("filterBuilding");
@@ -130,34 +127,32 @@
       cancelBtn.style.display = 'none';
     }
 
-    // Charger la liste des backups et activer le bouton
+    // Charger la liste des backups
     async function loadBackupList() {
-  restoreFromStorageBtn.disabled = true;
-  try {
-    const res = await listAll(storageRef(storage, 'backups/'));
-    backupList.innerHTML = '';
-    res.items.forEach(itemRef => {
-      const opt = document.createElement('option');
-      opt.value = itemRef.name;
-      opt.textContent = itemRef.name;
-      backupList.append(opt);
-    });
-    // si on a au moins un backup, on active le bouton Restaurer
-    restoreFromStorageBtn.disabled = res.items.length === 0;
-  } catch (e) {
-    console.error('Erreur loadBackupList:', e);
-    backupList.innerHTML = '<option>Erreur</option>';
-    restoreFromStorageBtn.disabled = true;
-  }
- }
+      restoreFromStorageBtn.disabled = true;
+      try {
+        const res = await listAll(storageRef(storage, 'backups/'));
+        backupList.innerHTML = '';  
+        res.items.forEach(itemRef => {
+          const opt = document.createElement('option');
+          opt.value = itemRef.name;
+          opt.textContent = itemRef.name;
+          backupList.append(opt);
+        });
+        restoreFromStorageBtn.disabled = (res.items.length === 0);
+      } catch (e) {
+        console.error('Erreur loadBackupList:', e);
+        backupList.innerHTML = '<option>Erreur de chargement</option>';
+        restoreFromStorageBtn.disabled = true;
+      }
+    }
 
     // Sauvegarde JSON vers Storage
     async function backupToStorage() {
       try {
         const arr = [];
-        const snap = await getDocs(collection(db,'inventaire'));
+        const snap = await getDocs(collection(db, 'inventaire'));
         snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-        console.log('Données à backup :', arr);
         const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
         const fileName = `backup_${new Date().toISOString()}.json`;
         const fileRef = storageRef(storage, `backups/${fileName}`);
@@ -173,17 +168,13 @@
     // Restauration depuis Storage
     async function restoreFromStorage() {
       const fileName = backupList.value;
-      if (!fileName) {
-         return alert('Aucun backup valide sélectionné.');
-      }
+      if (!fileName) return alert('Aucun backup valide sélectionné.');
       try {
         const fileUrl = await getDownloadURL(storageRef(storage, `backups/${fileName}`));
-        console.log('URL du backup :', fileUrl);
         const data = await (await fetch(fileUrl)).json();
-        console.log("Restauration effectuée, nombre d'entrées:", data.length);
         for (const item of data) {
           const { id, ...fields } = item;
-          await setDoc(doc(db,'inventaire',id), fields);
+          await setDoc(doc(db, 'inventaire', id), fields);
         }
         alert('Restauration terminée');
         renderTable();
@@ -193,50 +184,28 @@
       }
     }
 
-    // Export PDF (existant)
+    // Export PDF
     async function exportToPDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       doc.setFontSize(14);
       doc.text('Inventaire Technique', 10, 10);
-      const snap = await getDocs(collection(db,'inventaire'));
+      const snap = await getDocs(collection(db, 'inventaire'));
       const rows = snap.docs.map(i => {
         const v = i.data();
-        return [v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations||'', v.photoURL];
+        return [v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations || '', v.photoURL];
       });
       doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
       doc.save('inventaire.pdf');
     }
 
-    // Export CSV/Excel
-    async function exportToExcel() {
-  try {
-    const snap = await getDocs(collection(db, 'inventaire'));
-    let csv = '\uFEFFBâtiment,Localisation,Intitulé,Nombre,Agent,Observations,PhotoURL\n';
-    snap.forEach(d => {
-      const v = d.data();
-      csv += `${v.building},${v.location},${v.title},${v.quantity},${v.agent},"${v.observations}",${v.photoURL}\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'inventaire.csv';
-    a.click();
-  } catch (err) {
-    console.error('Erreur exportToExcel:', err);
-    alert('Erreur lors de l\'export Excel : ' + err.message);
-  }
-}
-
-    // Plomberie des autres fonctions (à conserver) : addEntry, saveEdit, deleteEntry, collectFormData, renderTable
-    // …
+    // ... Vos autres fonctions : addEntry, saveEdit, deleteEntry, collectFormData, renderTable
 
     // Événements
     actionBtn.addEventListener('click', () => editingId ? saveEdit() : addEntry());
     cancelBtn.addEventListener('click', resetForm);
     backupBtn.addEventListener('click', backupToStorage);
     restoreFromStorageBtn.addEventListener('click', restoreFromStorage);
-    excelBtn.addEventListener('click', exportToExcel);
     pdfBtn.addEventListener('click', exportToPDF);
     [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener('input', renderTable));
     clearFiltersBtn.addEventListener('click', () => { filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable(); });
