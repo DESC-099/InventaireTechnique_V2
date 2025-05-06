@@ -70,129 +70,140 @@
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
-    import { jsPDF } from "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    import "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+  import { getFirestore, collection, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
-      authDomain: "inventairetechnique.firebaseapp.com",
-      projectId: "inventairetechnique",
-      storageBucket: "inventairetechnique.appspot.com",
-      messagingSenderId: "783866462106",
-      appId: "1:783866462106:web:7bc5eca39df86773efc423"
-    };
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const storage = getStorage(app);
+  // Import configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBpMuNgE7TSeGQOzJVEAxuJueXSyssoYAU",
+    authDomain: "inventairetechnique.firebaseapp.com",
+    projectId: "inventairetechnique",
+    storageBucket: "inventairetechnique.appspot.com",
+    messagingSenderId: "783866462106",
+    appId: "1:783866462106:web:7bc5eca39df86773efc423"
+  };
 
-    const form = document.getElementById("entryForm");
-    const actionBtn = document.getElementById("actionBtn");
-    const cancelBtn = document.getElementById("cancelBtn");
-    const backupBtn = document.getElementById("backupBtn");
-    const pdfBtn = document.getElementById("pdfBtn");
-    const backupList = document.getElementById("backupList");
-    const restoreBtn = document.getElementById("restoreFromStorageBtn");
-    const tbody = document.querySelector("#dataTable tbody");
-    const photoPreview = document.getElementById("currentPhotoPreview");
-    const filterBuilding = document.getElementById("filterBuilding");
-    const filterAgent = document.getElementById("filterAgent");
-    const filterLocation = document.getElementById("filterLocation");
-    const clearBtn = document.getElementById("clearFiltersBtn");
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const storage = getStorage(app);
 
-    let editingId = null;
-    let currentPhotoURL = "";
+  // DOM elements
+  const form = document.getElementById("entryForm");
+  const actionBtn = document.getElementById("actionBtn");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const backupBtn = document.getElementById("backupBtn");
+  const pdfBtn = document.getElementById("pdfBtn");
+  const backupList = document.getElementById("backupList");
+  const restoreBtn = document.getElementById("restoreFromStorageBtn");
+  const tbody = document.querySelector("#dataTable tbody");
+  const photoPreview = document.getElementById("currentPhotoPreview");
+  const filterBuilding = document.getElementById("filterBuilding");
+  const filterAgent = document.getElementById("filterAgent");
+  const filterLocation = document.getElementById("filterLocation");
+  const clearBtn = document.getElementById("clearFiltersBtn");
 
-    function resetForm() {
-      form.reset();
-      editingId = null;
-      currentPhotoURL = '';
-      photoPreview.removeAttribute('src');
-      photoPreview.style.display = 'none';
-      actionBtn.textContent = 'Ajouter';
-      cancelBtn.style.display = 'none';
-    }
+  let editingId = null;
+  let currentPhotoURL = "";
 
-    // backup list loading
-    async function loadBackupList() {
+  // Reset form
+  function resetForm() {
+    form.reset();
+    editingId = null;
+    currentPhotoURL = '';
+    photoPreview.removeAttribute('src');
+    photoPreview.style.display = 'none';
+    actionBtn.textContent = 'Ajouter';
+    cancelBtn.style.display = 'none';
+  }
+
+  // Load list of backups
+  async function loadBackupList() {
+    restoreBtn.disabled = true;
+    try {
+      const res = await listAll(ref(storage, 'backups'));
+      backupList.innerHTML = '';
+      res.items.forEach(itemRef => {
+        const opt = document.createElement('option');
+        opt.value = itemRef.name;
+        opt.textContent = itemRef.name;
+        backupList.append(opt);
+      });
+      restoreBtn.disabled = res.items.length === 0;
+    } catch (err) {
+      console.error('Erreur loadBackupList:', err);
+      backupList.innerHTML = '<option>Erreur</option>';
       restoreBtn.disabled = true;
-      try {
-        const res = await listAll(storageRef(storage, 'backups'));
-        backupList.innerHTML = '';
-        res.items.forEach(item => {
-          const opt = document.createElement('option'); opt.value = item.name; opt.textContent = item.name;
-          backupList.append(opt);
-        });
-        restoreBtn.disabled = (res.items.length === 0);
-      } catch(e) {
-        console.error('Erreur loadBackupList', e);
-        backupList.innerHTML = '<option>Erreur</option>';
-        restoreBtn.disabled = true;
+    }
+  }
+
+  // Backup to Firebase Storage
+  async function backupToStorage() {
+    try {
+      const arr = [];
+      const snap = await getDocs(collection(db, 'inventaire'));
+      snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+      const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
+      const fileName = `backup_${new Date().toISOString()}.json`;
+      const fileRef = ref(storage, `backups/${fileName}`);
+      await uploadBytes(fileRef, blob);
+      alert('Backup uploadé : ' + fileName);
+      await loadBackupList();
+    } catch (err) {
+      console.error('Erreur backupToStorage:', err);
+      alert('Erreur lors du backup vers Storage : ' + err.message);
+    }
+  }
+
+  // Restore from Firebase Storage
+  async function restoreFromStorage() {
+    const fileName = backupList.value;
+    if (!fileName) {
+      return alert('Aucun backup valide sélectionné.');
+    }
+    try {
+      const url = await getDownloadURL(ref(storage, `backups/${fileName}`));
+      const data = await (await fetch(url)).json();
+      for (const item of data) {
+        const { id, ...fields } = item;
+        await setDoc(doc(db, 'inventaire', id), fields);
       }
+      alert('Restauration terminée');
+      renderTable();
+    } catch (err) {
+      console.error('Erreur restoreFromStorage:', err);
+      alert('Erreur lors de la restauration : ' + err.message);
     }
+  }
 
-    // backup to storage
-    async function backupToStorage() {
-      try {
-        const arr = [];
-        const snap = await getDocs(collection(db, 'inventaire'));
-        snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
-        const name = `backup_${new Date().toISOString()}.json`;
-        const ref = storageRef(storage, `backups/${name}`);
-        await uploadBytes(ref, blob);
-        alert('Backup uploadé : ' + name);
-        await loadBackupList();
-      } catch(err) {
-        console.error(err);
-        alert('Erreur backup: '+ err.message);
-      }
-    }
+  // Export to PDF using jsPDF loaded with previous <script> tags
+  async function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const docPDF = new jsPDF();
+    docPDF.setFontSize(14);
+    docPDF.text('Inventaire Technique', 10, 10);
+    const snap = await getDocs(collection(db, 'inventaire'));
+    const rows = snap.docs.map(i => {
+      const v = i.data();
+      return [v.building, v.location, v.title, v.quantity.toString(), v.agent, v.observations || '', v.photoURL];
+    });
+    docPDF.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']], body: rows, startY: 20 });
+    docPDF.save('inventaire.pdf');
+  }
 
-    // restore from storage
-    async function restoreFromStorage() {
-      const name = backupList.value;
-      if (!name) return alert('Aucun backup');
-      try {
-        const url = await getDownloadURL(storageRef(storage, `backups/${name}`));
-        const data = await (await fetch(url)).json();
-        for (const item of data) {
-          const { id, ...fields } = item;
-          await setDoc(doc(db, 'inventaire', id), fields);
-        }
-        alert('Restauration OK');
-        renderTable();
-      } catch(err) {
-        console.error(err);
-        alert('Erreur restore: '+ err.message);
-      }
-    }
+  // Event listeners
+  actionBtn.addEventListener('click', () => editingId ? saveEdit() : addEntry());
+  cancelBtn.addEventListener('click', resetForm);
+  backupBtn.addEventListener('click', backupToStorage);
+  restoreBtn.addEventListener('click', restoreFromStorage);
+  pdfBtn.addEventListener('click', exportToPDF);
+  [filterBuilding, filterAgent, filterLocation].forEach(el => el.addEventListener('input', renderTable));
+  clearBtn.addEventListener('click', () => { filterBuilding.value = filterAgent.value = filterLocation.value = ''; renderTable(); });
 
-    // export pdf
-    async function exportToPDF() {
-      const doc = new jsPDF(); doc.setFontSize(14); doc.text('Inventaire Technique',10,10);
-      const snap = await getDocs(collection(db,'inventaire'));
-      const rows = snap.docs.map(i=> Object.values(i.data()).slice(0,7));
-      doc.autoTable({ head: [['Bâtiment','Localisation','Intitulé','Nombre','Agent','Observations','PhotoURL']],body:rows,startY:20 });
-      doc.save('inventaire.pdf');
-    }
-
-    // TODO: addEntry, saveEdit, deleteEntry, collectFormData, renderTable functions here
-
-    // events
-    actionBtn.addEventListener('click', ()=> editingId?saveEdit():addEntry());
-    cancelBtn.addEventListener('click', resetForm);
-    backupBtn.addEventListener('click', backupToStorage);
-    restoreBtn.addEventListener('click', restoreFromStorage);
-    pdfBtn.addEventListener('click', exportToPDF);
-    [filterBuilding, filterAgent, filterLocation].forEach(el=>el.addEventListener('input', renderTable));
-    clearBtn.addEventListener('click', ()=> { filterBuilding.value=filterAgent.value=filterLocation.value=''; renderTable(); });
-
-    // init
-    renderTable();
-    loadBackupList();
-  </script>
+  // Initialization
+  renderTable();
+  loadBackupList();
+</script>
 </body>
 </html>
